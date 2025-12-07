@@ -54,6 +54,7 @@ export const translations = {
 
     // Task List
     tasks_title: "Zoznam úloh",
+    task_search_placeholder: "Hľadať v úlohách (napr. 3323*)...",
     export_excel: "Export do Excelu",
     empty_tasks: "Zatiaľ nemáte žiadne úlohy.",
     status_inventory: "INVENTÚRA",
@@ -83,6 +84,7 @@ export const translations = {
     user_add_title: "PRIDAŤ UŽÍVATEĽA",
     user_name: "Meno",
     user_pass: "Heslo",
+    user_show_pass: "Zobraziť heslo",
     user_add_btn: "Pridať",
     user_exists: "Užívateľ už existuje.",
     user_fill: "Vyplňte meno a heslo.",
@@ -108,6 +110,7 @@ export const translations = {
     archive_btn: "📦 Archivovať staré úlohy (> 24h)",
     archiving: "Archivujem...",
     sect_maint_db_link: "Otvoriť databázu (Firebase)",
+    sect_maint_gh_link: "Otvoriť zdrojový kód (GitHub)",
     sect_maint_db_desc: "Priamy prístup k Firestore databáze pre manuálne úpravy.",
     
     // Analytics
@@ -211,6 +214,7 @@ export const translations = {
 
     // Task List
     tasks_title: "Task List",
+    task_search_placeholder: "Search tasks (e.g. 3323*)...",
     export_excel: "Export to Excel",
     empty_tasks: "No tasks yet.",
     status_inventory: "INVENTORY",
@@ -240,6 +244,7 @@ export const translations = {
     user_add_title: "ADD USER",
     user_name: "Name",
     user_pass: "Password",
+    user_show_pass: "Show password",
     user_add_btn: "Add",
     user_exists: "User already exists.",
     user_fill: "Fill name and password.",
@@ -265,6 +270,7 @@ export const translations = {
     archive_btn: "📦 Archive old tasks (> 24h)",
     archiving: "Archiving...",
     sect_maint_db_link: "Open Database (Firebase)",
+    sect_maint_gh_link: "Open Source Code (GitHub)",
     sect_maint_db_desc: "Direct access to the Firestore database for manual edits.",
     
     // Analytics
