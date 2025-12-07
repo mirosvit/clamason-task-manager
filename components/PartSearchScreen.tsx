@@ -1,11 +1,10 @@
 
-
 import React, { useState, useMemo } from 'react';
 import PartNumberInput from './PartNumberInput';
 import TaskList from './TaskList';
 import SettingsTab from './SettingsTab';
 import AnalyticsTab from './AnalyticsTab';
-import { UserData, DBItem, PartRequest } from '../App';
+import { UserData, DBItem, PartRequest, BreakSchedule, SystemBreak } from '../App';
 import { useLanguage } from './LanguageContext';
 
 // Tell TypeScript that XLSX is a global variable from the script tag in index.html
@@ -97,6 +96,13 @@ interface PartSearchScreenProps {
   // Archive
   onArchiveTasks: () => Promise<{ success: boolean; count?: number; error?: string; message?: string }>;
   onFetchArchivedTasks: () => Promise<Task[]>;
+  // Breaks
+  breakSchedules: BreakSchedule[];
+  systemBreaks: SystemBreak[];
+  isBreakActive: boolean;
+  onAddBreakSchedule: (start: string, end: string) => void;
+  onDeleteBreakSchedule: (id: string) => void;
+  onEndBreak: () => void;
 }
 
 const LogoutIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -120,6 +126,12 @@ const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => (
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+);
+
+const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
 );
 
@@ -148,7 +160,8 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   onAddWorkplace, onBatchAddWorkplaces, onDeleteWorkplace, onDeleteAllWorkplaces,
   onAddMissingReason, onDeleteMissingReason,
   partRequests, onRequestPart, onApprovePartRequest, onRejectPartRequest,
-  onArchiveTasks, onFetchArchivedTasks
+  onArchiveTasks, onFetchArchivedTasks,
+  breakSchedules, systemBreaks, isBreakActive, onAddBreakSchedule, onDeleteBreakSchedule, onEndBreak
 }) => {
   const [selectedPart, setSelectedPart] = useState<DBItem | null>(null);
   const [selectedWorkplace, setSelectedWorkplace] = useState<string | null>(null);
@@ -170,6 +183,7 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   const hasUnfinishedTasks = tasks.some(task => !task.isDone);
   // Leader and User cannot see settings/analytics. Logistician can.
   const canManage = currentUserRole === 'ADMIN' || currentUserRole === 'SUPERVISOR' || currentUserRole === 'LOGISTICIAN';
+  const isAdmin = currentUserRole === 'ADMIN';
   const pendingRequestsCount = partRequests.length;
 
   const workplaceStrings = workplaces.map(w => w.value);
@@ -258,6 +272,11 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
     : null;
   
   const handleSendToTasks = () => {
+    if (isBreakActive && !isAdmin) {
+        alert(t('break_blocked_msg'));
+        return;
+    }
+
     if (selectedPart && selectedWorkplace && quantity) {
       // Pass structured data
       onAddTask(selectedPart.value, selectedWorkplace, quantity, quantityUnit, priority);
@@ -354,6 +373,27 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
 
   return (
     <div className="w-full h-full p-2 md:p-8">
+      {/* BREAK BANNER */}
+      {isBreakActive && (
+          <div className="bg-red-600 text-white p-4 mb-4 rounded-xl shadow-lg animate-pulse flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                  <ClockIcon className="w-8 h-8" />
+                  <div>
+                      <h2 className="text-xl font-bold">{t('break_active')}</h2>
+                      <p className="text-sm text-red-100">{t('break_active_desc')}</p>
+                  </div>
+              </div>
+              {(currentUserRole === 'ADMIN' || currentUserRole === 'SUPERVISOR') && (
+                  <button 
+                    onClick={onEndBreak}
+                    className="bg-white text-red-700 font-bold px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                      {t('break_end_btn')}
+                  </button>
+              )}
+          </div>
+      )}
+
       <div className="relative bg-gray-800 rounded-xl shadow-lg p-4 md:p-8 h-full flex flex-col">
         
         {/* Header */}
@@ -566,10 +606,13 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                      {resultText && (
                         <button
                             onClick={handleSendToTasks}
+                            disabled={isBreakActive && !isAdmin}
                             className={`flex-grow px-4 py-3 sm:py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 text-center ${
-                                priority === 'URGENT' 
-                                ? 'bg-red-700 hover:bg-red-800 focus:ring-red-500 animate-pulse' 
-                                : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+                                isBreakActive && !isAdmin
+                                ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                                : priority === 'URGENT' 
+                                    ? 'bg-red-700 hover:bg-red-800 focus:ring-red-500 animate-pulse' 
+                                    : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
                             }`}
                         >
                             {showSuccessMessage ? t('sent_msg') : (priority === 'URGENT' ? t('send_urgent_btn') : t('send_btn'))}
@@ -610,6 +653,7 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
 
                 <TaskList
                   currentUser={currentUserRole}
+                  currentUserName={currentUser}
                   tasks={filteredTasks}
                   missingReasons={missingReasons}
                   onToggleTask={onToggleTask}
@@ -627,7 +671,7 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
 
             {activeTab === 'analytics' && canManage && (
               <div>
-                 <AnalyticsTab tasks={tasks} onFetchArchivedTasks={onFetchArchivedTasks} />
+                 <AnalyticsTab tasks={tasks} onFetchArchivedTasks={onFetchArchivedTasks} systemBreaks={systemBreaks} />
               </div>
             )}
 
@@ -658,6 +702,9 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                   onApprovePartRequest={onApprovePartRequest}
                   onRejectPartRequest={onRejectPartRequest}
                   onArchiveTasks={onArchiveTasks}
+                  breakSchedules={breakSchedules}
+                  onAddBreakSchedule={onAddBreakSchedule}
+                  onDeleteBreakSchedule={onDeleteBreakSchedule}
                 />
               </div>
             )}
