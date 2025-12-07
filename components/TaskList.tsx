@@ -1,12 +1,11 @@
 
-
 import React, { useState } from 'react';
 import { Task, PriorityLevel } from './PartSearchScreen';
 import { DBItem } from '../App';
 import { useLanguage } from './LanguageContext';
 
 interface TaskListProps {
-  currentUser: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER';
+  currentUser: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN';
   tasks: Task[];
   missingReasons: DBItem[];
   onToggleTask: (id: string) => void;
@@ -16,6 +15,8 @@ interface TaskListProps {
   onToggleMissing: (id: string, reason?: string) => void;
   onSetInProgress: (id: string) => void;
   onToggleBlock: (id: string) => void;
+  onAddNote: (id: string, note: string) => void;
+  onReleaseTask: (id: string) => void;
 }
 
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -85,8 +86,14 @@ const UnlockIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const ChatIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+    </svg>
+);
 
-const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons, onToggleTask, onMarkAsIncorrect, onEditTask, onDeleteTask, onToggleMissing, onSetInProgress, onToggleBlock }) => {
+
+const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons, onToggleTask, onMarkAsIncorrect, onEditTask, onDeleteTask, onToggleMissing, onSetInProgress, onToggleBlock, onAddNote, onReleaseTask }) => {
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
@@ -96,13 +103,21 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
   // Modal for Missing Reason
   const [missingModalTaskId, setMissingModalTaskId] = useState<string | null>(null);
 
+  // Note Modal
+  const [noteModalTaskId, setNoteModalTaskId] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
+
   const isLeader = currentUser === 'LEADER';
   const isAdminOrSuper = currentUser === 'ADMIN' || currentUser === 'SUPERVISOR';
+  const isLogistician = currentUser === 'LOGISTICIAN';
   
   const canDelete = isAdminOrSuper;
-  // Leader can Edit (only priority)
-  const canEdit = isAdminOrSuper || isLeader;
-  const isUser = currentUser === 'USER';
+  // Leader can Edit (only priority), Logistician can edit
+  const canEdit = isAdminOrSuper || isLeader || isLogistician;
+  
+  // Logistician cannot "finish" tasks physically
+  const canFinish = !isLogistician;
+  const canSetProgress = !isLogistician;
 
   if (tasks.length === 0) {
     return <p className="text-center text-gray-500 italic">{t('empty_tasks')}</p>;
@@ -154,6 +169,19 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
       }
   };
 
+  // Note Modal Handlers
+  const openNoteModal = (task: Task) => {
+      setNoteModalTaskId(task.id);
+      setNoteText(task.note || '');
+  }
+  const saveNote = () => {
+      if(noteModalTaskId) {
+          onAddNote(noteModalTaskId, noteText);
+          setNoteModalTaskId(null);
+          setNoteText('');
+      }
+  }
+
   const getTaskDisplayData = (task: Task) => {
     // 1. Try structured data
     if (task.partNumber) {
@@ -198,6 +226,11 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
     };
   };
 
+  const formatDateTime = (timestamp?: number) => {
+      if (!timestamp) return '-';
+      return new Date(timestamp).toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit' });
+  };
+
 
   return (
     <div className="space-y-4">
@@ -232,9 +265,28 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
           </div>
       )}
 
+      {/* NOTE MODAL */}
+      {noteModalTaskId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+              <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 shadow-2xl border border-gray-600 animate-fade-in">
+                  <h3 className="text-xl font-bold text-white mb-4 text-center">{t('btn_note')}</h3>
+                  <textarea 
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    className="w-full h-32 bg-gray-700 border border-gray-600 rounded p-3 text-white focus:border-teal-500 outline-none"
+                    placeholder="..."
+                  />
+                  <div className="flex gap-2 mt-4">
+                      <button onClick={() => setNoteModalTaskId(null)} className="flex-1 bg-gray-600 text-white py-2 rounded">{t('btn_cancel')}</button>
+                      <button onClick={saveNote} className="flex-1 bg-teal-600 text-white py-2 rounded">{t('btn_save')}</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {tasks.map((task) => {
         const isEditing = editingTaskId === task.id;
-        const isMissingLocked = task.isMissing && !isAdminOrSuper; // User and Leader cannot un-mark
+        const isMissingLocked = task.isMissing && !isAdminOrSuper && !isLogistician; // User and Leader cannot un-mark
         const priority = task.priority || 'NORMAL';
         const isBlocked = task.isBlocked;
         const isIncorrect = task.status === 'incorrectly_entered';
@@ -322,6 +374,17 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
                               <span className={`text-sm sm:text-base font-bold uppercase tracking-wider ${(task.isDone || isIncorrect) ? 'text-gray-600' : 'text-teal-400'}`}>
                                   {displayData.workplace}
                               </span>
+                              {/* Task Note Bubble */}
+                              {task.note && (
+                                  <div 
+                                    className="bg-yellow-100 text-yellow-900 px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 max-w-[200px] truncate cursor-pointer"
+                                    onClick={() => openNoteModal(task)}
+                                    title={task.note}
+                                  >
+                                      <ChatIcon className="w-3 h-3" />
+                                      {task.note}
+                                  </div>
+                              )}
                           </div>
                       </div>
 
@@ -342,12 +405,36 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
                 )}
 
                 {/* Status Footers */}
-                {task.isDone && task.completionTime && (
-                    <div className={`mt-3 pt-2 border-t flex items-center gap-2 text-sm font-mono ${isIncorrect ? 'border-gray-700 text-red-400' : 'border-gray-800 text-gray-500'}`}>
-                        {isIncorrect ? <IncorrectIcon className="w-4 h-4 text-red-400"/> : <CheckIcon className="w-4 h-4 text-teal-600"/>}
-                        <span className="font-bold">{isIncorrect ? t('status_incorrect') : ''}</span>
-                        {task.completedBy && <span className={`${isIncorrect ? 'text-red-400' : 'text-teal-600'} font-bold`}>{task.completedBy}</span>}
-                        <span>• {task.completionTime}</span>
+                {task.isDone && (
+                    <div className={`mt-3 pt-2 border-t ${isIncorrect ? 'border-gray-700 text-red-400' : 'border-gray-800 text-gray-500'} text-xs font-mono space-y-1`}>
+                        {isIncorrect ? (
+                            <div className="flex items-center gap-2">
+                                <IncorrectIcon className="w-4 h-4 text-red-400"/>
+                                <span className="font-bold">{t('status_incorrect')}</span>
+                                {task.completedBy && <span className="text-red-400 font-bold">{task.completedBy}</span>}
+                                <span>• {task.completionTime}</span>
+                            </div>
+                        ) : (
+                            /* DETAILED HISTORY FOR COMPLETED TASKS */
+                            <>
+                                {/* Created */}
+                                <div className="flex gap-2">
+                                    <span className="text-gray-600">📅 {t('task_created')}:</span>
+                                    <span>
+                                        <span className="font-semibold text-gray-400">{task.createdBy || '-'}</span> 
+                                        {task.createdAt && <span className="opacity-70"> • {formatDateTime(task.createdAt)}</span>}
+                                    </span>
+                                </div>
+                                {/* Completed */}
+                                <div className="flex gap-2 text-teal-600/80">
+                                    <span className="font-bold">✓ {t('task_completed_label')}:</span>
+                                    <span>
+                                        <span className="font-bold">{task.completedBy || '-'}</span>
+                                        {task.completedAt && <span className="opacity-70"> • {formatDateTime(task.completedAt)}</span>}
+                                    </span>
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
                 
@@ -408,17 +495,30 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
                   {!task.isDone && !isBlocked && !isLeader && (
                     <>
                        {/* In Progress */}
-                       <button
-                          onClick={() => onSetInProgress(task.id)}
-                          className={`p-4 rounded-lg transition-all duration-200 w-14 sm:w-16 flex items-center justify-center ${
-                              task.isInProgress
-                              ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                              : 'bg-gray-700 hover:bg-gray-600 text-amber-500'
-                          }`}
-                          title={t('status_resolving')}
-                       >
-                           {task.isInProgress ? <StopIcon className="w-8 h-8" /> : <PlayIcon className="w-8 h-8" />}
-                       </button>
+                       {canSetProgress && (
+                           <>
+                            {task.isInProgress ? (
+                                <div className="flex gap-2">
+                                    {/* Stop/Return Button */}
+                                    <button 
+                                        onClick={() => onReleaseTask(task.id)}
+                                        className="p-4 rounded-lg bg-red-900/50 hover:bg-red-800 text-red-200 w-14 sm:w-16 flex items-center justify-center"
+                                        title={t('btn_stop')}
+                                    >
+                                        <StopIcon className="w-8 h-8" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => onSetInProgress(task.id)}
+                                    className="p-4 rounded-lg transition-all duration-200 bg-gray-700 hover:bg-gray-600 text-amber-500 w-14 sm:w-16 flex items-center justify-center"
+                                    title={t('status_resolving')}
+                                >
+                                    <PlayIcon className="w-8 h-8" />
+                                </button>
+                            )}
+                           </>
+                       )}
 
                        {/* Missing */}
                        <button
@@ -456,13 +556,15 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
                         </button>
                       
                       {/* Finish */}
-                      <button
-                          onClick={() => onToggleTask(task.id)}
-                          className="p-4 rounded-lg transition-all duration-200 bg-teal-600 hover:bg-teal-700 text-white w-14 sm:w-16 flex items-center justify-center"
-                          title={t('btn_finish')}
-                      >
-                          <CheckIcon className="w-8 h-8" />
-                      </button>
+                      {canFinish && (
+                          <button
+                              onClick={() => onToggleTask(task.id)}
+                              className="p-4 rounded-lg transition-all duration-200 bg-teal-600 hover:bg-teal-700 text-white w-14 sm:w-16 flex items-center justify-center"
+                              title={t('btn_finish')}
+                          >
+                              <CheckIcon className="w-8 h-8" />
+                          </button>
+                      )}
                     </>
                   )}
 
@@ -480,6 +582,15 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
                   {/* Edit/Delete Actions */}
                   {canEdit && (
                     <div className="flex flex-col gap-2 ml-1">
+                        {!task.isDone && (
+                            <button
+                                onClick={() => openNoteModal(task)}
+                                className="text-gray-500 hover:text-yellow-400 transition-colors duration-200 p-2 rounded-full hover:bg-gray-700"
+                                title={t('btn_note')}
+                            >
+                                <ChatIcon className="h-6 w-6" />
+                            </button>
+                        )}
                         <button
                             onClick={() => startEditing(task)}
                             className="text-gray-500 hover:text-blue-400 transition-colors duration-200 p-2 rounded-full hover:bg-gray-700"
