@@ -52,6 +52,20 @@ export interface SystemBreak {
     isActive: boolean;
 }
 
+export interface BOMItem {
+    id: string;
+    parentPart: string;
+    childPart: string;
+    quantity: number;
+}
+
+export interface BOMRequest {
+    id: string;
+    parentPart: string;
+    requestedBy: string;
+    requestedAt: number;
+}
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<string>('');
@@ -69,6 +83,10 @@ const App: React.FC = () => {
   const [breakSchedules, setBreakSchedules] = useState<BreakSchedule[]>([]);
   const [systemBreaks, setSystemBreaks] = useState<SystemBreak[]>([]);
   const [isBreakActive, setIsBreakActive] = useState(false);
+
+  // BOM State
+  const [bomItems, setBomItems] = useState<BOMItem[]>([]);
+  const [bomRequests, setBomRequests] = useState<BOMRequest[]>([]);
 
   // PWA Install Prompt State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -212,6 +230,24 @@ const App: React.FC = () => {
           // Determine if currently active based on DB state
           const activeBreak = breaks.find(b => b.isActive);
           setIsBreakActive(!!activeBreak);
+      });
+      return () => unsubscribe();
+  }, []);
+
+  // Fetch BOM Items
+  useEffect(() => {
+      const q = query(collection(db, 'bom_items'), orderBy('parentPart'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+          setBomItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOMItem)));
+      });
+      return () => unsubscribe();
+  }, []);
+
+  // Fetch BOM Requests
+  useEffect(() => {
+      const q = query(collection(db, 'bom_requests'), orderBy('requestedAt', 'desc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+          setBomRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOMRequest)));
       });
       return () => unsubscribe();
   }, []);
@@ -431,6 +467,62 @@ const App: React.FC = () => {
               isActive: false
           });
       }
+  };
+
+  // --- BOM Actions ---
+  const handleAddBOMItem = async (parent: string, child: string, qty: number) => {
+      await addDoc(collection(db, 'bom_items'), { parentPart: parent, childPart: child, quantity: qty });
+  };
+
+  const handleBatchAddBOMItems = async (vals: string[]) => {
+      const batch = writeBatch(db);
+      vals.forEach(line => {
+          const parts = line.split(';');
+          if (parts.length >= 3) {
+              const parent = parts[0].trim();
+              const child = parts[1].trim();
+              // FIX: Replace comma with dot for European formats and use parseFloat
+              const qtyStr = parts[2].trim().replace(',', '.');
+              const qty = parseFloat(qtyStr);
+              if (parent && child && !isNaN(qty)) {
+                  const ref = doc(collection(db, 'bom_items'));
+                  batch.set(ref, { parentPart: parent, childPart: child, quantity: qty });
+              }
+          }
+      });
+      await batch.commit();
+  };
+
+  const handleDeleteBOMItem = async (id: string) => {
+      await deleteDoc(doc(db, 'bom_items', id));
+  };
+
+  const handleDeleteAllBOMItems = async () => {
+      const q = query(collection(db, 'bom_items'));
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+  };
+
+  const handleRequestBOM = async (parentPart: string): Promise<boolean> => {
+      const exists = bomRequests.some(r => r.parentPart.toUpperCase() === parentPart.toUpperCase());
+      if (exists) return false;
+      
+      await addDoc(collection(db, 'bom_requests'), {
+          parentPart,
+          requestedBy: currentUser,
+          requestedAt: Date.now()
+      });
+      return true;
+  };
+
+  const handleApproveBOMRequest = async (req: BOMRequest) => {
+      await deleteDoc(doc(db, 'bom_requests', req.id));
+  };
+
+  const handleRejectBOMRequest = async (id: string) => {
+      await deleteDoc(doc(db, 'bom_requests', id));
   };
 
 
@@ -783,6 +875,16 @@ const App: React.FC = () => {
           onAddBreakSchedule={handleAddBreakSchedule}
           onDeleteBreakSchedule={handleDeleteBreakSchedule}
           onEndBreak={handleManualEndBreak}
+          // BOM Props
+          bomItems={bomItems}
+          bomRequests={bomRequests}
+          onAddBOMItem={handleAddBOMItem}
+          onBatchAddBOMItems={handleBatchAddBOMItems}
+          onDeleteBOMItem={handleDeleteBOMItem}
+          onDeleteAllBOMItems={handleDeleteAllBOMItems}
+          onRequestBOM={handleRequestBOM}
+          onApproveBOMRequest={handleApproveBOMRequest}
+          onRejectBOMRequest={handleRejectBOMRequest}
           // PWA Install
           installPrompt={deferredPrompt}
           onInstallApp={handleInstallApp}
