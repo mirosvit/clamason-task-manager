@@ -33,6 +33,13 @@ interface SettingsTabProps {
   onArchiveTasks: () => Promise<{ success: boolean; count?: number; error?: string; message?: string }>;
 }
 
+const EyeIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+);
+
 const SettingsTab: React.FC<SettingsTabProps> = ({ 
   currentUserRole,
   users, onAddUser, onUpdatePassword, onUpdateUserRole, onDeleteUser,
@@ -47,6 +54,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [newRole, setNewRole] = useState<'USER' | 'ADMIN' | 'SUPERVISOR' | 'LEADER'>('USER');
   const [userError, setUserError] = useState('');
   const [passwordInputs, setPasswordInputs] = useState<Record<string, string>>({});
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
   // DB State
   const [newPart, setNewPart] = useState('');
@@ -82,6 +90,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     onUpdatePassword(username, pass);
     setPasswordInputs(prev => ({ ...prev, [username]: '' }));
     showSuccess(`Heslo pre ${username} bolo zmenené.`);
+  };
+
+  const togglePasswordVisibility = (username: string) => {
+      setVisiblePasswords(prev => ({ ...prev, [username]: !prev[username] }));
   };
 
   // --- DB Handlers ---
@@ -229,7 +241,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 <div className="flex items-center gap-3 min-w-[150px]">
                   <div className={`w-3 h-3 rounded-full ${user.role === 'ADMIN' ? 'bg-red-500' : user.role === 'SUPERVISOR' ? 'bg-purple-500' : user.role === 'LEADER' ? 'bg-yellow-500' : 'bg-teal-500'}`}></div>
                   <div>
-                    <p className="font-bold text-white">{user.username}</p>
+                    <div className="flex items-center gap-2">
+                        <p className="font-bold text-white">{user.username}</p>
+                        {isAdmin && (
+                            <button 
+                                onClick={() => togglePasswordVisibility(user.username)}
+                                className="text-gray-500 hover:text-white"
+                                title={t('user_show_pass')}
+                            >
+                                <EyeIcon className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+                    {visiblePasswords[user.username] && (
+                        <p className="text-xs text-yellow-400 font-mono mt-1">Heslo: {user.password}</p>
+                    )}
                     {/* Role Dropdown for ADMIN */}
                     {isAdmin && user.username !== 'ADMIN' ? (
                        <select
@@ -428,18 +454,28 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                         {isArchiving ? t('archiving') : t('archive_btn')}
                     </button>
                 </div>
-                <div className="border-t md:border-t-0 md:border-l border-gray-700 pt-4 md:pt-0 md:pl-6">
-                    <p className="text-gray-400 text-sm mb-4">
+                <div className="border-t md:border-t-0 md:border-l border-gray-700 pt-4 md:pt-0 md:pl-6 space-y-4">
+                    <p className="text-gray-400 text-sm">
                         {t('sect_maint_db_desc')}
                     </p>
-                     <a 
-                        href="https://console.firebase.google.com/project/sklad-ulohy/firestore/data"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-block bg-blue-800 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
-                     >
-                        {t('sect_maint_db_link')}
-                     </a>
+                    <div className="flex flex-col gap-3">
+                         <a 
+                            href="https://console.firebase.google.com/project/sklad-ulohy/firestore/data"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-center bg-blue-800 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                         >
+                            {t('sect_maint_db_link')}
+                         </a>
+                         <a 
+                            href="https://github.com/MiroslavSvitok/clamason-task-manager" 
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-center bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors border border-gray-500"
+                         >
+                            {t('sect_maint_gh_link')}
+                         </a>
+                    </div>
                 </div>
              </div>
         </div>
