@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { UserData, DBItem, PartRequest } from '../App';
+import { UserData, DBItem, PartRequest, BreakSchedule } from '../App';
 import { useLanguage } from './LanguageContext';
 
 interface SettingsTabProps {
@@ -30,6 +30,10 @@ interface SettingsTabProps {
   onRejectPartRequest: (id: string) => void;
   // Archive
   onArchiveTasks: () => Promise<{ success: boolean; count?: number; error?: string; message?: string }>;
+  // Breaks
+  breakSchedules: BreakSchedule[];
+  onAddBreakSchedule: (start: string, end: string) => void;
+  onDeleteBreakSchedule: (id: string) => void;
 }
 
 const EyeIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -45,7 +49,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   parts, workplaces, missingReasons, onAddPart, onBatchAddParts, onDeletePart, onDeleteAllParts,
   onAddWorkplace, onBatchAddWorkplaces, onDeleteWorkplace, onDeleteAllWorkplaces,
   onAddMissingReason, onDeleteMissingReason,
-  partRequests, onApprovePartRequest, onRejectPartRequest, onArchiveTasks
+  partRequests, onApprovePartRequest, onRejectPartRequest, onArchiveTasks,
+  breakSchedules, onAddBreakSchedule, onDeleteBreakSchedule
 }) => {
   // User State
   const [newUser, setNewUser] = useState('');
@@ -64,6 +69,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [newMissingReason, setNewMissingReason] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isArchiving, setIsArchiving] = useState(false);
+  
+  // Break State
+  const [newBreakStart, setNewBreakStart] = useState('');
+  const [newBreakEnd, setNewBreakEnd] = useState('');
+
   const { t } = useLanguage();
 
   const isAdmin = currentUserRole === 'ADMIN';
@@ -172,6 +182,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           } else {
               alert(`Chyba pri archivácii: ${result.error}`);
           }
+      }
+  };
+
+  const handleAddBreak = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (newBreakStart && newBreakEnd) {
+          onAddBreakSchedule(newBreakStart, newBreakEnd);
+          setNewBreakStart('');
+          setNewBreakEnd('');
+          showSuccess('Prestávka pridaná.');
       }
   };
 
@@ -436,7 +456,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
       )}
 
-       {/* 5. SECTION: MAINTENANCE (Archive & DB Link) */}
+      {/* 5. SECTION: MAINTENANCE (Archive & DB Link) */}
        {isAdmin && (
         <div className="bg-gray-900 rounded-xl p-6 shadow-lg border border-red-900/50">
              <h2 className="text-xl font-bold text-red-400 mb-4 border-b border-gray-700 pb-2">{t('sect_maint')}</h2>
@@ -482,9 +502,49 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
        )}
 
+       {/* 6. SECTION: BREAKS */}
+       {isAdmin && (
+           <div className="bg-gray-900 rounded-xl p-6 shadow-lg border border-purple-700/50">
+               <h2 className="text-xl font-bold text-purple-400 mb-6 border-b border-gray-700 pb-2">{t('sect_breaks')}</h2>
+               <div className="flex flex-col md:flex-row gap-8">
+                   <div className="flex-1">
+                       <div className="bg-gray-800 rounded p-4 mb-4 space-y-2">
+                           {breakSchedules.map(b => (
+                               <div key={b.id} className="flex justify-between items-center bg-gray-700 px-3 py-2 rounded">
+                                   <span className="text-white font-mono">{b.start} - {b.end}</span>
+                                   <button onClick={() => onDeleteBreakSchedule(b.id)} className="text-red-400 hover:text-red-200">×</button>
+                               </div>
+                           ))}
+                           {breakSchedules.length === 0 && <p className="text-gray-500 italic text-sm">Žiadne naplánované prestávky.</p>}
+                       </div>
+                   </div>
+                   <div className="md:w-1/3">
+                       <form onSubmit={handleAddBreak} className="flex gap-2">
+                           <input 
+                               type="time"
+                               value={newBreakStart} 
+                               onChange={e => setNewBreakStart(e.target.value)} 
+                               className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-2 text-white text-sm"
+                               required
+                           />
+                           <span className="text-gray-400 self-center">-</span>
+                           <input 
+                               type="time"
+                               value={newBreakEnd} 
+                               onChange={e => setNewBreakEnd(e.target.value)} 
+                               className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-2 text-white text-sm"
+                               required
+                           />
+                           <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded text-sm">{t('add_single')}</button>
+                       </form>
+                   </div>
+               </div>
+           </div>
+       )}
+
        {/* Footer Credit */}
        <div className="pt-8 pb-4 text-center text-xs text-gray-600 border-t border-gray-800">
-           <p>Clamason Task Manager v1.2</p>
+           <p>Clamason Task Manager v1.3</p>
            <p className="mt-1">{t('created_by')}</p>
        </div>
 
