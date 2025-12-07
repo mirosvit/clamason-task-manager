@@ -6,6 +6,7 @@ import { useLanguage } from './LanguageContext';
 
 interface TaskListProps {
   currentUser: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN';
+  currentUserName: string;
   tasks: Task[];
   missingReasons: DBItem[];
   onToggleTask: (id: string) => void;
@@ -93,7 +94,7 @@ const ChatIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 
-const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons, onToggleTask, onMarkAsIncorrect, onEditTask, onDeleteTask, onToggleMissing, onSetInProgress, onToggleBlock, onAddNote, onReleaseTask }) => {
+const TaskList: React.FC<TaskListProps> = ({ currentUser, currentUserName, tasks, missingReasons, onToggleTask, onMarkAsIncorrect, onEditTask, onDeleteTask, onToggleMissing, onSetInProgress, onToggleBlock, onAddNote, onReleaseTask }) => {
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
@@ -110,13 +111,14 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
   const isLeader = currentUser === 'LEADER';
   const isAdminOrSuper = currentUser === 'ADMIN' || currentUser === 'SUPERVISOR';
   const isLogistician = currentUser === 'LOGISTICIAN';
+  const isUser = currentUser === 'USER';
   
   const canDelete = isAdminOrSuper;
   // Leader can Edit (only priority), Logistician can edit
   const canEdit = isAdminOrSuper || isLeader || isLogistician;
   
   // Logistician cannot "finish" tasks physically
-  const canFinish = !isLogistician;
+  const canFinishAny = !isLogistician;
   const canSetProgress = !isLogistician;
 
   if (tasks.length === 0) {
@@ -292,6 +294,11 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
         const isIncorrect = task.status === 'incorrectly_entered';
         const displayData = getTaskDisplayData(task);
         
+        // Check if user can finish this specific task
+        const userCanFinish = isUser 
+            ? (task.isInProgress && task.inProgressBy === currentUserName) 
+            : canFinishAny;
+
         // Background Logic
         let bgClass = '';
         if (isBlocked) {
@@ -555,8 +562,8 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, tasks, missingReasons,
                           )}
                         </button>
                       
-                      {/* Finish */}
-                      {canFinish && (
+                      {/* Finish (Restricted for User) */}
+                      {userCanFinish && (
                           <button
                               onClick={() => onToggleTask(task.id)}
                               className="p-4 rounded-lg transition-all duration-200 bg-teal-600 hover:bg-teal-700 text-white w-14 sm:w-16 flex items-center justify-center"
