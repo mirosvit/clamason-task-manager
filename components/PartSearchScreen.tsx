@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import PartNumberInput from './PartNumberInput';
 import TaskList from './TaskList';
 import SettingsTab from './SettingsTab';
@@ -103,6 +103,9 @@ interface PartSearchScreenProps {
   onAddBreakSchedule: (start: string, end: string) => void;
   onDeleteBreakSchedule: (id: string) => void;
   onEndBreak: () => void;
+  // PWA Install
+  installPrompt: any;
+  onInstallApp: () => void;
 }
 
 const LogoutIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -161,7 +164,8 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   onAddMissingReason, onDeleteMissingReason,
   partRequests, onRequestPart, onApprovePartRequest, onRejectPartRequest,
   onArchiveTasks, onFetchArchivedTasks,
-  breakSchedules, systemBreaks, isBreakActive, onAddBreakSchedule, onDeleteBreakSchedule, onEndBreak
+  breakSchedules, systemBreaks, isBreakActive, onAddBreakSchedule, onDeleteBreakSchedule, onEndBreak,
+  installPrompt, onInstallApp
 }) => {
   const [selectedPart, setSelectedPart] = useState<DBItem | null>(null);
   const [selectedWorkplace, setSelectedWorkplace] = useState<string | null>(null);
@@ -179,6 +183,34 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
 
   const [activeTab, setActiveTab] = useState<'entry' | 'tasks' | 'settings' | 'analytics'>('entry');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
+  // --- LOCAL BREAK LOGIC ---
+  const [localBreakActive, setLocalBreakActive] = useState(false);
+
+  useEffect(() => {
+    const checkLocalBreak = () => {
+      if (!breakSchedules || breakSchedules.length === 0) {
+        setLocalBreakActive(false);
+        return;
+      }
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const currentHM = `${hours}:${minutes}`;
+
+      const isLocal = breakSchedules.some(s => currentHM >= s.start && currentHM < s.end);
+      setLocalBreakActive(isLocal);
+    };
+
+    // Run immediately
+    checkLocalBreak();
+    // Run every 5 seconds to be responsive
+    const interval = setInterval(checkLocalBreak, 5000);
+    return () => clearInterval(interval);
+  }, [breakSchedules]);
+
+  // Combine DB state and Local state for robust UI
+  const isBreakNow = isBreakActive || localBreakActive;
 
   const hasUnfinishedTasks = tasks.some(task => !task.isDone);
   // Leader and User cannot see settings/analytics. Logistician can.
@@ -272,7 +304,8 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
     : null;
   
   const handleSendToTasks = () => {
-    if (isBreakActive && !isAdmin) {
+    // Use robust isBreakNow check
+    if (isBreakNow && !isAdmin) {
         alert(t('break_blocked_msg'));
         return;
     }
@@ -374,7 +407,7 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   return (
     <div className="w-full h-full p-2 md:p-8">
       {/* BREAK BANNER */}
-      {isBreakActive && (
+      {isBreakNow && (
           <div className="bg-red-600 text-white p-4 mb-4 rounded-xl shadow-lg animate-pulse flex justify-between items-center">
               <div className="flex items-center gap-3">
                   <ClockIcon className="w-8 h-8" />
@@ -606,9 +639,9 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                      {resultText && (
                         <button
                             onClick={handleSendToTasks}
-                            disabled={isBreakActive && !isAdmin}
+                            disabled={isBreakNow && !isAdmin}
                             className={`flex-grow px-4 py-3 sm:py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 text-center ${
-                                isBreakActive && !isAdmin
+                                isBreakNow && !isAdmin
                                 ? 'bg-gray-600 cursor-not-allowed opacity-50'
                                 : priority === 'URGENT' 
                                     ? 'bg-red-700 hover:bg-red-800 focus:ring-red-500 animate-pulse' 
@@ -705,6 +738,8 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                   breakSchedules={breakSchedules}
                   onAddBreakSchedule={onAddBreakSchedule}
                   onDeleteBreakSchedule={onDeleteBreakSchedule}
+                  installPrompt={installPrompt}
+                  onInstallApp={onInstallApp}
                 />
               </div>
             )}
