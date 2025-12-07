@@ -1,15 +1,14 @@
 
-
 import React, { useState } from 'react';
 import { UserData, DBItem, PartRequest } from '../App';
 import { useLanguage } from './LanguageContext';
 
 interface SettingsTabProps {
-  currentUserRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER';
+  currentUserRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN';
   users: UserData[];
   onAddUser: (user: UserData) => void;
   onUpdatePassword: (username: string, newPass: string) => void;
-  onUpdateUserRole: (username: string, newRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER') => void;
+  onUpdateUserRole: (username: string, newRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN') => void;
   onDeleteUser: (username: string) => void;
   // DB Props
   parts: DBItem[];
@@ -51,7 +50,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // User State
   const [newUser, setNewUser] = useState('');
   const [newPass, setNewPass] = useState('');
-  const [newRole, setNewRole] = useState<'USER' | 'ADMIN' | 'SUPERVISOR' | 'LEADER'>('USER');
+  const [newRole, setNewRole] = useState<'USER' | 'ADMIN' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN'>('USER');
   const [userError, setUserError] = useState('');
   const [passwordInputs, setPasswordInputs] = useState<Record<string, string>>({});
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
@@ -266,6 +265,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                            <option value="USER">USER</option>
                            <option value="LEADER">LEADER</option>
                            <option value="SUPERVISOR">SUPERVISOR</option>
+                           <option value="LOGISTICIAN">LOGISTICIAN</option>
                            <option value="ADMIN">ADMIN</option>
                        </select>
                     ) : (
@@ -310,6 +310,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 <option value="USER">USER</option>
                 <option value="LEADER">LEADER</option>
                 <option value="SUPERVISOR">SUPERVISOR</option>
+                <option value="LOGISTICIAN">LOGISTICIAN</option>
                 {isAdmin && <option value="ADMIN">ADMIN</option>}
               </select>
             </div>
