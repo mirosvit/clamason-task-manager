@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { UserData, DBItem, PartRequest, BreakSchedule } from '../App';
+import { UserData, DBItem, PartRequest, BreakSchedule, BOMItem, BOMRequest } from '../App';
 import { useLanguage } from './LanguageContext';
 
 interface SettingsTabProps {
@@ -34,6 +34,15 @@ interface SettingsTabProps {
   breakSchedules: BreakSchedule[];
   onAddBreakSchedule: (start: string, end: string) => void;
   onDeleteBreakSchedule: (id: string) => void;
+  // BOM
+  bomItems?: BOMItem[];
+  bomRequests?: BOMRequest[];
+  onAddBOMItem?: (parent: string, child: string, qty: number) => void;
+  onBatchAddBOMItems?: (vals: string[]) => void;
+  onDeleteBOMItem?: (id: string) => void;
+  onDeleteAllBOMItems?: () => void;
+  onApproveBOMRequest?: (req: BOMRequest) => void;
+  onRejectBOMRequest?: (id: string) => void;
   // PWA
   installPrompt: any;
   onInstallApp: () => void;
@@ -46,6 +55,12 @@ const EyeIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+);
+
 const SettingsTab: React.FC<SettingsTabProps> = ({ 
   currentUserRole,
   users, onAddUser, onUpdatePassword, onUpdateUserRole, onDeleteUser,
@@ -54,6 +69,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onAddMissingReason, onDeleteMissingReason,
   partRequests, onApprovePartRequest, onRejectPartRequest, onArchiveTasks,
   breakSchedules, onAddBreakSchedule, onDeleteBreakSchedule,
+  bomItems, bomRequests, onAddBOMItem, onBatchAddBOMItems, onDeleteBOMItem, onDeleteAllBOMItems, onApproveBOMRequest, onRejectBOMRequest,
   installPrompt, onInstallApp
 }) => {
   // User State
@@ -78,10 +94,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [newBreakStart, setNewBreakStart] = useState('');
   const [newBreakEnd, setNewBreakEnd] = useState('');
 
+  // BOM State
+  const [bomParent, setBomParent] = useState('');
+  const [bomChild, setBomChild] = useState('');
+  const [bomQty, setBomQty] = useState('');
+  const [bomBulk, setBomBulk] = useState('');
+  const [bomSearchQuery, setBomSearchQuery] = useState('');
+
   const { t } = useLanguage();
 
   const isAdmin = currentUserRole === 'ADMIN';
   const isSuper = currentUserRole === 'SUPERVISOR';
+  const isLogistician = currentUserRole === 'LOGISTICIAN';
+  const canManageDB = isAdmin || isLogistician;
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
@@ -199,6 +224,37 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           showSuccess('Prestávka pridaná.');
       }
   };
+
+  const handleAddBOM = (e: React.FormEvent) => {
+      e.preventDefault();
+      if(bomParent && bomChild && bomQty) {
+          if (onAddBOMItem) onAddBOMItem(bomParent, bomChild, parseFloat(bomQty));
+          setBomParent(''); setBomChild(''); setBomQty('');
+          showSuccess('BOM väzba pridaná.');
+      }
+  };
+
+  const handleBulkAddBOM = () => {
+      const lines = bomBulk.split('\n').map(l => l.trim()).filter(l => l !== '');
+      if (lines.length > 0 && onBatchAddBOMItems) {
+          onBatchAddBOMItems(lines);
+          setBomBulk('');
+          showSuccess(`${lines.length} BOM väzieb pridaných.`);
+      }
+  }
+
+  const handleDeleteAllBOMConfirm = () => {
+      if (window.confirm("Naozaj chcete vymazať VŠETKY položky BOM z databázy? Táto akcia je nevratná.")) {
+          if (onDeleteAllBOMItems) onDeleteAllBOMItems();
+          showSuccess("Všetky BOM položky boli vymazané.");
+      }
+  }
+
+  // Filter BOM Items based on search query
+  const filteredBOMItems = bomItems?.filter(item => 
+      item.parentPart.toLowerCase().includes(bomSearchQuery.toLowerCase()) || 
+      item.childPart.toLowerCase().includes(bomSearchQuery.toLowerCase())
+  );
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-8">
@@ -350,7 +406,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="bg-gray-900 rounded-xl p-6 shadow-lg border border-gray-700 flex flex-col h-full">
           <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-2">
               <h2 className="text-xl font-bold text-teal-400">{t('sect_parts')}</h2>
-              {isAdmin && parts.length > 0 && (
+              {canManageDB && parts.length > 0 && (
                   <button onClick={handleDeleteAllPartsConfirm} className="text-xs bg-red-900 hover:bg-red-800 text-red-100 px-3 py-1 rounded">{t('delete_all')}</button>
               )}
           </div>
@@ -359,12 +415,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             {parts.map(item => (
               <div key={item.id} className="flex justify-between items-center bg-gray-700 px-3 py-1 rounded hover:bg-gray-600">
                 <span className="text-sm font-mono">{item.value}</span>
-                {isAdmin && <button onClick={() => onDeletePart(item.id)} className="text-red-400 hover:text-red-200">×</button>}
+                {canManageDB && <button onClick={() => onDeletePart(item.id)} className="text-red-400 hover:text-red-200">×</button>}
               </div>
             ))}
           </div>
 
-          {isAdmin && (
+          {canManageDB && (
             <>
               <form onSubmit={handleAddSinglePart} className="flex gap-2 mb-4">
                 <input value={newPart} onChange={e => setNewPart(e.target.value)} placeholder={t('new_part_place')} className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm" />
@@ -389,7 +445,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="bg-gray-900 rounded-xl p-6 shadow-lg border border-gray-700 flex flex-col h-full">
           <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-2">
               <h2 className="text-xl font-bold text-teal-400">{t('sect_wp')}</h2>
-              {isAdmin && workplaces.length > 0 && (
+              {canManageDB && workplaces.length > 0 && (
                   <button onClick={handleDeleteAllWPConfirm} className="text-xs bg-red-900 hover:bg-red-800 text-red-100 px-3 py-1 rounded">{t('delete_all')}</button>
               )}
           </div>
@@ -398,12 +454,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             {workplaces.map(item => (
               <div key={item.id} className="flex justify-between items-center bg-gray-700 px-3 py-1 rounded hover:bg-gray-600">
                 <span className="text-sm font-mono">{item.value} {item.standardTime ? <span className="text-blue-300">({item.standardTime} min)</span> : ''}</span>
-                {isAdmin && <button onClick={() => onDeleteWorkplace(item.id)} className="text-red-400 hover:text-red-200">×</button>}
+                {canManageDB && <button onClick={() => onDeleteWorkplace(item.id)} className="text-red-400 hover:text-red-200">×</button>}
               </div>
             ))}
           </div>
 
-          {isAdmin && (
+          {canManageDB && (
             <>
               <form onSubmit={handleAddSingleWP} className="flex gap-2 mb-4">
                 <input value={newWorkplace} onChange={e => setNewWorkplace(e.target.value)} placeholder={t('new_wp_place')} className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm" />
@@ -569,6 +625,81 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                        {t('pwa_installed')}
                    </p>
                )}
+           </div>
+       )}
+
+       {/* 8. SECTION: BOM DATABASE */}
+       {canManageDB && (
+           <div className="bg-gray-900 rounded-xl p-6 shadow-lg border border-green-700/50">
+               <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-2">
+                   <h2 className="text-xl font-bold text-green-400">{t('sect_bom')}</h2>
+                   {bomItems && bomItems.length > 0 && (
+                        <button onClick={handleDeleteAllBOMConfirm} className="text-xs bg-red-900 hover:bg-red-800 text-red-100 px-3 py-1 rounded">{t('delete_all')}</button>
+                   )}
+               </div>
+               
+               {/* Requests */}
+               {bomRequests && bomRequests.length > 0 && (
+                   <div className="mb-6 bg-yellow-900/20 border border-yellow-700 p-4 rounded-lg">
+                       <h3 className="text-yellow-400 font-bold mb-3">{t('bom_req_title')}</h3>
+                       <div className="space-y-2">
+                           {bomRequests.map(req => (
+                               <div key={req.id} className="flex justify-between items-center bg-gray-800 p-3 rounded">
+                                   <span className="text-white text-sm">{req.parentPart} <span className="text-gray-500">({req.requestedBy})</span></span>
+                                   <div className="flex gap-2">
+                                       <button onClick={() => onApproveBOMRequest && onApproveBOMRequest(req)} className="text-green-400 text-xs border border-green-600 px-2 py-1 rounded">✓ {t('req_approve')}</button>
+                                       <button onClick={() => onRejectBOMRequest && onRejectBOMRequest(req.id)} className="text-red-400 text-xs border border-red-600 px-2 py-1 rounded">✕</button>
+                                   </div>
+                               </div>
+                           ))}
+                       </div>
+                   </div>
+               )}
+
+               <div className="flex flex-col md:flex-row gap-8">
+                   <div className="flex-1">
+                       <div className="relative mb-2">
+                            <span className="absolute inset-y-0 left-0 flex items-center pl-2">
+                                <SearchIcon className="h-4 w-4 text-gray-500" />
+                            </span>
+                            <input
+                                type="text"
+                                value={bomSearchQuery}
+                                onChange={(e) => setBomSearchQuery(e.target.value)}
+                                placeholder="Vyhľadať BOM (Rodič/Dieťa)..."
+                                className="w-full bg-gray-700 border border-gray-600 rounded pl-8 pr-3 py-2 text-white text-sm focus:border-teal-500 outline-none"
+                            />
+                       </div>
+                       <div className="bg-gray-800 rounded p-4 mb-4 space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                           {filteredBOMItems?.map(b => (
+                               <div key={b.id} className="flex justify-between items-center bg-gray-700 px-3 py-2 rounded">
+                                   <span className="text-white text-sm font-mono">{b.parentPart} → {b.childPart} <span className="text-green-400">({b.quantity})</span></span>
+                                   <button onClick={() => onDeleteBOMItem && onDeleteBOMItem(b.id)} className="text-red-400 hover:text-red-200">×</button>
+                               </div>
+                           ))}
+                           {(!filteredBOMItems || filteredBOMItems.length === 0) && <p className="text-gray-500 italic text-sm">Žiadne BOM položky.</p>}
+                       </div>
+                   </div>
+                   <div className="md:w-1/3 space-y-4">
+                       <form onSubmit={handleAddBOM} className="flex flex-col gap-2">
+                           <input value={bomParent} onChange={e => setBomParent(e.target.value)} placeholder={t('bom_parent_place')} className="bg-gray-700 border border-gray-600 rounded px-2 py-2 text-white text-sm" />
+                           <input value={bomChild} onChange={e => setBomChild(e.target.value)} placeholder={t('bom_child_place')} className="bg-gray-700 border border-gray-600 rounded px-2 py-2 text-white text-sm" />
+                           <input type="number" step="0.00001" value={bomQty} onChange={e => setBomQty(e.target.value)} placeholder={t('bom_qty_place')} className="bg-gray-700 border border-gray-600 rounded px-2 py-2 text-white text-sm" />
+                           <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm">{t('bom_add_single')}</button>
+                       </form>
+                       
+                       <div className="pt-4 border-t border-gray-700">
+                           <label className="text-xs text-gray-400 mb-1 block">{t('bom_bulk_label')}</label>
+                           <textarea 
+                               value={bomBulk}
+                               onChange={e => setBomBulk(e.target.value)}
+                               className="w-full h-20 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-xs font-mono"
+                               placeholder={`PARENT;CHILD;1.5`}
+                           />
+                           <button onClick={handleBulkAddBOM} className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm">{t('bom_bulk_btn')}</button>
+                       </div>
+                   </div>
+               </div>
            </div>
        )}
 
