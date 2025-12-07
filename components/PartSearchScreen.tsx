@@ -4,7 +4,7 @@ import PartNumberInput from './PartNumberInput';
 import TaskList from './TaskList';
 import SettingsTab from './SettingsTab';
 import AnalyticsTab from './AnalyticsTab';
-import { UserData, DBItem, PartRequest, BreakSchedule, SystemBreak, BOMItem, BOMRequest } from '../App';
+import { UserData, DBItem, PartRequest, BreakSchedule, SystemBreak, BOMItem, BOMRequest, Role, Permission } from '../App';
 import { useLanguage } from './LanguageContext';
 
 // Tell TypeScript that XLSX is a global variable from the script tag in index.html
@@ -113,6 +113,12 @@ interface PartSearchScreenProps {
   onRequestBOM: (parent: string) => Promise<boolean>;
   onApproveBOMRequest: (req: BOMRequest) => void;
   onRejectBOMRequest: (id: string) => void;
+  // Roles
+  roles: Role[];
+  permissions: Permission[];
+  onAddRole: (name: string) => void;
+  onDeleteRole: (id: string) => void;
+  onUpdatePermission: (permissionId: string, roleName: string, hasPermission: boolean) => void;
   // PWA Install
   installPrompt: any;
   onInstallApp: () => void;
@@ -176,6 +182,7 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   onArchiveTasks, onFetchArchivedTasks,
   breakSchedules, systemBreaks, isBreakActive, onAddBreakSchedule, onDeleteBreakSchedule, onEndBreak,
   bomItems, bomRequests, onAddBOMItem, onBatchAddBOMItems, onDeleteBOMItem, onDeleteAllBOMItems, onRequestBOM, onApproveBOMRequest, onRejectBOMRequest,
+  roles, permissions, onAddRole, onDeleteRole, onUpdatePermission,
   installPrompt, onInstallApp
 }) => {
   const [selectedPart, setSelectedPart] = useState<DBItem | null>(null);
@@ -198,7 +205,9 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   // BOM Calculator State
   const [bomParentQuery, setBomParentQuery] = useState('');
   const [bomQuantity, setBomQuantity] = useState('');
+  const [bomSelectedWorkplace, setBomSelectedWorkplace] = useState<string | null>(null);
   const [bomRequestStatus, setBomRequestStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [clickedBOMTasks, setClickedBOMTasks] = useState<Set<string>>(new Set());
 
   // --- LOCAL BREAK LOGIC ---
   const [localBreakActive, setLocalBreakActive] = useState(false);
@@ -433,16 +442,25 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
       }));
   }, [bomParentQuery, bomQuantity, bomItems]);
 
-  const handleCreateTaskFromBOM = (childPart: string, requiredQty: number) => {
+  const handleCreateTaskFromBOM = (childPart: string, requiredQty: number, bomItemId: string) => {
+      if (!bomSelectedWorkplace) {
+          alert('Vyberte cieľové pracovisko pre BOM.');
+          return;
+      }
+
       // Find part DBItem or mock one
       const partObj = parts.find(p => p.value === childPart) || { id: 'bom_gen', value: childPart };
-      setSelectedPart(partObj);
       
       // Use integer for order quantity
       const roundedQty = Math.ceil(requiredQty);
-      setQuantity(roundedQty.toString());
-      setQuantityUnit('pcs');
-      setActiveTab('entry');
+      
+      // Directly call addTask instead of switching tabs, for efficiency
+      onAddTask(partObj.value, bomSelectedWorkplace, roundedQty.toString(), 'pcs', 'NORMAL');
+      
+      // Visual feedback
+      setClickedBOMTasks(prev => new Set(prev).add(bomItemId));
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 2000);
   };
 
   const handleRequestBOMClick = async () => {
@@ -479,6 +497,12 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                   </button>
               )}
           </div>
+      )}
+
+      {showSuccessMessage && (
+        <div className="fixed top-4 right-4 bg-green-600 text-white p-4 rounded-lg shadow-xl z-50 animate-bounce">
+          {t('sent_msg')}
+        </div>
       )}
 
       <div className="relative bg-gray-800 rounded-xl shadow-lg p-4 md:p-8 h-full flex flex-col">
@@ -769,7 +793,7 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                   <p className="text-center text-gray-400 mb-6 sm:mb-8">{t('bom_subtitle')}</p>
                   
                   <div className="max-w-2xl mx-auto bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                      <div className="grid grid-cols-1 gap-4 mb-6">
                           <div>
                               <label className="block text-sm font-medium text-gray-300 mb-2">{t('bom_parent')}</label>
                               <PartNumberInput
@@ -777,6 +801,15 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                                   onPartSelect={(val) => setBomParentQuery(val || '')}
                                   value={bomParentQuery}
                                   placeholder="Vyberte výrobok..."
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-2">{t('bom_select_wp')}</label>
+                              <PartNumberInput
+                                  parts={workplaceStrings}
+                                  onPartSelect={(val) => setBomSelectedWorkplace(val || null)}
+                                  value={bomSelectedWorkplace}
+                                  placeholder={t('workplace_placeholder')}
                               />
                           </div>
                           <div>
@@ -805,8 +838,12 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                                               </p>
                                           </div>
                                           <button 
-                                              onClick={() => handleCreateTaskFromBOM(item.childPart, item.totalRequired)}
-                                              className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded text-sm font-bold flex items-center gap-1 transition-colors"
+                                              onClick={() => handleCreateTaskFromBOM(item.childPart, item.totalRequired, item.id)}
+                                              className={`text-white px-3 py-2 rounded text-sm font-bold flex items-center gap-1 transition-colors ${
+                                                  clickedBOMTasks.has(item.id) 
+                                                  ? 'bg-blue-600 hover:bg-blue-500 border-2 border-yellow-400' 
+                                                  : 'bg-blue-600 hover:bg-blue-500 border-2 border-transparent'
+                                              }`}
                                           >
                                               <span className="text-lg leading-none">+</span> {t('bom_create_task')}
                                           </button>
@@ -879,6 +916,12 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                   onDeleteAllBOMItems={onDeleteAllBOMItems}
                   onApproveBOMRequest={onApproveBOMRequest}
                   onRejectBOMRequest={onRejectBOMRequest}
+                  // Roles Props
+                  roles={roles}
+                  permissions={permissions}
+                  onAddRole={onAddRole}
+                  onDeleteRole={onDeleteRole}
+                  onUpdatePermission={onUpdatePermission}
                   installPrompt={installPrompt}
                   onInstallApp={onInstallApp}
                 />
