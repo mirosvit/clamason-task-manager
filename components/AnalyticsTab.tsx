@@ -1,6 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Task, InventorySession } from './PartSearchScreen';
+import { SystemBreak } from '../App';
 import { useLanguage } from './LanguageContext';
 
 // Tell TypeScript that XLSX is a global variable from the script tag in index.html
@@ -9,6 +10,7 @@ declare var XLSX: any;
 interface AnalyticsTabProps {
   tasks: Task[];
   onFetchArchivedTasks: () => Promise<Task[]>;
+  systemBreaks: SystemBreak[];
 }
 
 type FilterMode = 'ALL' | 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'CUSTOM';
@@ -19,7 +21,7 @@ const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
-const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tasks: liveTasks, onFetchArchivedTasks }) => {
+const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tasks: liveTasks, onFetchArchivedTasks, systemBreaks }) => {
   const [filterMode, setFilterMode] = useState<FilterMode>('ALL');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -116,23 +118,41 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tasks: liveTasks, onFetchAr
     return `${minutes} min`;
   };
 
-  // --- Helper to calculate time spent blocked in inventory ---
+  // --- Helper to calculate time spent blocked (Inventory OR Break) ---
   const calculateBlockedTime = (history: InventorySession[] | undefined, startTime: number, endTime: number): number => {
-      if (!history || history.length === 0) return 0;
-      
       let totalBlocked = 0;
-      history.forEach(session => {
-          const blockStart = session.start;
-          const blockEnd = session.end || endTime; // If still blocked, calc up to completed time? Usually not done if blocked.
-          
-          // We only care about overlap between [startTime, endTime] and [blockStart, blockEnd]
-          const overlapStart = Math.max(startTime, blockStart);
-          const overlapEnd = Math.min(endTime, blockEnd);
 
-          if (overlapEnd > overlapStart) {
-              totalBlocked += (overlapEnd - overlapStart);
-          }
-      });
+      // 1. Inventory Blocking
+      if (history && history.length > 0) {
+          history.forEach(session => {
+              const blockStart = session.start;
+              const blockEnd = session.end || endTime;
+              
+              const overlapStart = Math.max(startTime, blockStart);
+              const overlapEnd = Math.min(endTime, blockEnd);
+
+              if (overlapEnd > overlapStart) {
+                  totalBlocked += (overlapEnd - overlapStart);
+              }
+          });
+      }
+
+      // 2. System Breaks Blocking
+      // We check all recorded breaks against the task duration
+      if (systemBreaks && systemBreaks.length > 0) {
+          systemBreaks.forEach(br => {
+              const breakStart = br.start;
+              const breakEnd = br.end || endTime;
+
+              const overlapStart = Math.max(startTime, breakStart);
+              const overlapEnd = Math.min(endTime, breakEnd);
+
+              if (overlapEnd > overlapStart) {
+                  totalBlocked += (overlapEnd - overlapStart);
+              }
+          });
+      }
+
       return totalBlocked;
   };
 
@@ -260,7 +280,7 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tasks: liveTasks, onFetchAr
                      if (task.completedAt) {
                          let execution = task.completedAt - task.startedAt;
                          
-                         // Subtract Blocked/Inventory Time
+                         // Subtract Blocked/Inventory/Break Time
                          const blockedTime = calculateBlockedTime(task.inventoryHistory, task.startedAt, task.completedAt);
                          execution = execution - blockedTime;
 
@@ -306,7 +326,7 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tasks: liveTasks, onFetchAr
         topParts: getTop5(partCounts),
         workerStats: workerStatsList
     };
-  }, [filteredTasks]);
+  }, [filteredTasks, systemBreaks]);
 
   // --- Export Functionality ---
   const handleExportReport = () => {
