@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { UserData, DBItem, PartRequest, BreakSchedule, BOMItem, BOMRequest } from '../App';
+import { UserData, DBItem, PartRequest, BreakSchedule, BOMItem, BOMRequest, Role, Permission } from '../App';
 import { useLanguage } from './LanguageContext';
 
 interface SettingsTabProps {
@@ -43,6 +43,12 @@ interface SettingsTabProps {
   onDeleteAllBOMItems?: () => void;
   onApproveBOMRequest?: (req: BOMRequest) => void;
   onRejectBOMRequest?: (id: string) => void;
+  // Roles
+  roles?: Role[];
+  permissions?: Permission[];
+  onAddRole?: (name: string) => void;
+  onDeleteRole?: (id: string) => void;
+  onUpdatePermission?: (permissionId: string, roleName: string, hasPermission: boolean) => void;
   // PWA
   installPrompt: any;
   onInstallApp: () => void;
@@ -70,6 +76,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   partRequests, onApprovePartRequest, onRejectPartRequest, onArchiveTasks,
   breakSchedules, onAddBreakSchedule, onDeleteBreakSchedule,
   bomItems, bomRequests, onAddBOMItem, onBatchAddBOMItems, onDeleteBOMItem, onDeleteAllBOMItems, onApproveBOMRequest, onRejectBOMRequest,
+  roles, permissions, onAddRole, onDeleteRole, onUpdatePermission,
   installPrompt, onInstallApp
 }) => {
   // User State
@@ -100,6 +107,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [bomQty, setBomQty] = useState('');
   const [bomBulk, setBomBulk] = useState('');
   const [bomSearchQuery, setBomSearchQuery] = useState('');
+
+  // Roles State
+  const [newRoleName, setNewRoleName] = useState('');
 
   const { t } = useLanguage();
 
@@ -250,11 +260,33 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       }
   }
 
+  // --- Role Handlers ---
+  const handleAddRole = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (newRoleName.trim() && onAddRole) {
+          onAddRole(newRoleName.trim());
+          setNewRoleName('');
+          showSuccess('Rola vytvorená.');
+      }
+  };
+
   // Filter BOM Items based on search query
   const filteredBOMItems = bomItems?.filter(item => 
       item.parentPart.toLowerCase().includes(bomSearchQuery.toLowerCase()) || 
       item.childPart.toLowerCase().includes(bomSearchQuery.toLowerCase())
   );
+
+  // Permission Logic Helpers
+  const permissionList = [
+      'perm_manage_users', 'perm_manage_db', 'perm_manage_bom', 
+      'perm_view_analytics', 'perm_view_settings', 
+      'perm_edit_tasks', 'perm_delete_tasks', 
+      'perm_archive', 'perm_manage_breaks'
+  ];
+
+  const hasPermission = (roleId: string, permName: string) => {
+      return permissions?.some(p => p.roleId === roleId && p.permissionName === permName) || false;
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-8">
@@ -343,11 +375,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                           onChange={(e) => onUpdateUserRole(user.username, e.target.value as any)}
                           className="mt-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:border-teal-500 focus:outline-none cursor-pointer"
                        >
+                           {/* Dynamically list roles would be better, but keeping legacy hardcoded here plus dynamic */}
                            <option value="USER">USER</option>
                            <option value="LEADER">LEADER</option>
                            <option value="SUPERVISOR">SUPERVISOR</option>
                            <option value="LOGISTICIAN">LOGISTICIAN</option>
                            <option value="ADMIN">ADMIN</option>
+                           {/* Add custom roles here if you want them assignable */}
+                           {roles?.filter(r => !r.isSystem).map(r => (
+                               <option key={r.id} value={r.name}>{r.name}</option>
+                           ))}
                        </select>
                     ) : (
                        <p className="text-xs text-gray-500">{user.role}</p>
@@ -703,9 +740,68 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
            </div>
        )}
 
+       {/* 9. SECTION: ROLE & PERMISSIONS MANAGEMENT (ADMIN ONLY) */}
+       {isAdmin && roles && permissions && (
+           <div className="bg-gray-900 rounded-xl p-6 shadow-lg border border-orange-700/50">
+               <h2 className="text-xl font-bold text-orange-400 mb-6 border-b border-gray-700 pb-2">{t('sect_roles')}</h2>
+               
+               <div className="overflow-x-auto mb-6">
+                   <table className="min-w-full text-left text-sm border-collapse">
+                       <thead>
+                           <tr className="border-b border-gray-700">
+                               <th className="py-2 px-4 text-gray-400 font-medium">Permission / Role</th>
+                               {roles.map(role => (
+                                   <th key={role.id} className="py-2 px-4 text-white font-bold text-center">
+                                       <div className="flex flex-col items-center gap-1">
+                                           <span>{role.name}</span>
+                                           {!role.isSystem && (
+                                               <button 
+                                                  onClick={() => onDeleteRole && onDeleteRole(role.id)} 
+                                                  className="text-red-500 hover:text-red-300 text-[10px] border border-red-900 bg-red-900/20 px-1 rounded"
+                                               >
+                                                   del
+                                               </button>
+                                           )}
+                                       </div>
+                                   </th>
+                               ))}
+                           </tr>
+                       </thead>
+                       <tbody>
+                           {permissionList.map(perm => (
+                               <tr key={perm} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                   <td className="py-2 px-4 text-gray-300">{t(perm as any)}</td>
+                                   {roles.map(role => (
+                                       <td key={`${role.id}-${perm}`} className="py-2 px-4 text-center">
+                                           <input 
+                                              type="checkbox" 
+                                              checked={hasPermission(role.id, perm)}
+                                              onChange={(e) => onUpdatePermission && onUpdatePermission(perm, role.name, e.target.checked)}
+                                              className="w-4 h-4 text-orange-600 bg-gray-700 border-gray-600 rounded focus:ring-orange-500"
+                                           />
+                                       </td>
+                                   ))}
+                               </tr>
+                           ))}
+                       </tbody>
+                   </table>
+               </div>
+
+               <form onSubmit={handleAddRole} className="flex gap-2 max-w-sm">
+                   <input 
+                       value={newRoleName} 
+                       onChange={e => setNewRoleName(e.target.value)} 
+                       placeholder={t('role_name_place')}
+                       className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm uppercase"
+                   />
+                   <button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded text-sm">{t('role_add_btn')}</button>
+               </form>
+           </div>
+       )}
+
        {/* Footer Credit */}
        <div className="pt-8 pb-4 text-center text-xs text-gray-600 border-t border-gray-800">
-           <p>Clamason Task Manager v1.4</p>
+           <p>Clamason Task Manager v1.5</p>
            <p className="mt-1">{t('created_by')}</p>
        </div>
 
