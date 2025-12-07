@@ -1,6 +1,6 @@
 
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import PartNumberInput from './PartNumberInput';
 import TaskList from './TaskList';
 import SettingsTab from './SettingsTab';
@@ -109,6 +109,12 @@ const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+);
+
 const PartSearchScreen: React.FC<PartSearchScreenProps> = ({ 
   currentUser,
   currentUserRole,
@@ -145,6 +151,9 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   // Priority State
   const [priority, setPriority] = useState<PriorityLevel>('NORMAL');
 
+  // Task Filtering State
+  const [taskSearchQuery, setTaskSearchQuery] = useState('');
+
   const [activeTab, setActiveTab] = useState<'entry' | 'tasks' | 'settings' | 'analytics'>('entry');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
@@ -153,6 +162,40 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   const pendingRequestsCount = partRequests.length;
 
   const workplaceStrings = workplaces.map(w => w.value);
+
+  // Filter Tasks based on Search Query
+  const filteredTasks = useMemo(() => {
+    if (!taskSearchQuery.trim()) return tasks;
+
+    const query = taskSearchQuery.trim();
+    let regex: RegExp;
+
+    if (query.includes('*')) {
+       // Wildcard search logic
+       try {
+         const escapeRegex = (str: string) => str.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+         const pattern = query.split('*').map(escapeRegex).join('.*');
+         regex = new RegExp(`^${pattern}`, 'i'); // Matches start, or loosely anywhere if ^ removed
+       } catch {
+         return [];
+       }
+    } else {
+       // Standard contains logic
+       regex = new RegExp(query.replace(/[.+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    }
+
+    return tasks.filter(task => {
+       // Check Part Number (structured) or legacy Text
+       const partNum = task.partNumber || '';
+       if (partNum && regex.test(partNum)) return true;
+       
+       // Fallback to searching the whole text string
+       if (regex.test(task.text)) return true;
+
+       return false;
+    });
+  }, [tasks, taskSearchQuery]);
+
 
   const handlePartSelection = (partValue: string | null) => {
     if (partValue) {
@@ -224,7 +267,7 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
         return;
     }
     
-    const dataToExport = tasks.map(task => {
+    const dataToExport = filteredTasks.map(task => {
         // Use structured data if available, otherwise parse text (fallback for old tasks)
         let partNumber = task.partNumber;
         let workplace = task.workplace;
@@ -540,9 +583,24 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                      )}
                    </div>
                 </div>
+                
+                {/* Search Bar for Tasks */}
+                <div className="mb-6 max-w-lg mx-auto relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+                        <SearchIcon className="h-5 w-5 text-gray-500" />
+                    </span>
+                    <input 
+                        type="text" 
+                        value={taskSearchQuery}
+                        onChange={(e) => setTaskSearchQuery(e.target.value)}
+                        placeholder={t('task_search_placeholder')}
+                        className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    />
+                </div>
+
                 <TaskList
                   currentUser={currentUserRole}
-                  tasks={tasks}
+                  tasks={filteredTasks}
                   missingReasons={missingReasons}
                   onToggleTask={onToggleTask}
                   onMarkAsIncorrect={onMarkAsIncorrect}
