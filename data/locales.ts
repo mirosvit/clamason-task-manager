@@ -18,6 +18,7 @@ export const translations = {
     tab_tasks: "Úlohy",
     tab_analytics: "Analytika",
     tab_settings: "Nastavenia",
+    tab_bom: "BOM (Kusovník)",
 
     // Entry Screen
     search_title: "Vyhľadávanie dielov",
@@ -76,6 +77,20 @@ export const translations = {
     modal_missing_title: "Vyberte dôvod chýbajúceho tovaru",
     modal_no_reasons: "Žiadne dôvody nie sú definované.",
     
+    // BOM
+    bom_title: "BOM Kalkulačka",
+    bom_subtitle: "Výpočet materiálovej spotreby",
+    bom_parent: "Výrobok (Parent Part)",
+    bom_qty: "Plánovaný počet",
+    bom_calc_btn: "Vypočítať",
+    bom_results: "Potrebný materiál:",
+    bom_child: "Komponent (Child Part)",
+    bom_req_qty: "Potrebné množstvo",
+    bom_create_task: "Vytvoriť úlohu",
+    bom_no_results: "Žiadne komponenty nenájdené pre tento výrobok.",
+    bom_request_btn: "Nenašlo sa? ➕ Požiadať o pridanie BOM",
+    bom_req_success: "Žiadosť o BOM bola odoslaná.",
+
     // Settings
     settings_title: "Nastavenia systému",
     req_title: "⚡ Žiadosti o nové diely",
@@ -130,6 +145,15 @@ export const translations = {
     pwa_desc: "Vytvorí odkaz 'TASK MANAGER' na ploche zariadenia pre rýchly prístup.",
     pwa_installed: "Aplikácia je už nainštalovaná alebo prehliadač nepodporuje automatickú inštaláciu.",
     
+    sect_bom: "8. Databáza BOM (Kusovníky)",
+    bom_add_single: "Pridať Väzbu",
+    bom_parent_place: "Rodič (Parent)",
+    bom_child_place: "Dieťa (Child)",
+    bom_qty_place: "Spotreba",
+    bom_bulk_label: "Hromadné pridanie (Parent;Child;Qty):",
+    bom_bulk_btn: "Importovať BOM",
+    bom_req_title: "Žiadosti o BOM",
+
     // Analytics
     analytics_title: "Analytika Výroby",
     include_archive: "Zahrnúť dáta z archívu",
@@ -196,6 +220,7 @@ export const translations = {
     tab_tasks: "Tasks",
     tab_analytics: "Analytics",
     tab_settings: "Settings",
+    tab_bom: "BOM (Bill of Materials)",
 
     // Entry Screen
     search_title: "Part Search",
@@ -308,6 +333,29 @@ export const translations = {
     pwa_desc: "Creates a 'TASK MANAGER' shortcut on the device desktop.",
     pwa_installed: "App is already installed or browser does not support automatic installation.",
     
+    sect_bom: "8. BOM Database",
+    bom_add_single: "Add Relation",
+    bom_parent_place: "Parent Part",
+    bom_child_place: "Child Part",
+    bom_qty_place: "Consumption",
+    bom_bulk_label: "Bulk Add (Parent;Child;Qty):",
+    bom_bulk_btn: "Import BOM",
+    bom_req_title: "BOM Requests",
+
+    // BOM
+    bom_title: "BOM Calculator",
+    bom_subtitle: "Calculate material requirements",
+    bom_parent: "Parent Part",
+    bom_qty: "Planned Quantity",
+    bom_calc_btn: "Calculate",
+    bom_results: "Required Materials:",
+    bom_child: "Component (Child Part)",
+    bom_req_qty: "Required Qty",
+    bom_create_task: "Create Task",
+    bom_no_results: "No components found for this part.",
+    bom_request_btn: "Not found? ➕ Request BOM",
+    bom_req_success: "BOM Request sent.",
+
     // Analytics
     analytics_title: "Production Analytics",
     include_archive: "Include Archived Data",
