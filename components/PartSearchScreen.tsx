@@ -4,7 +4,7 @@ import PartNumberInput from './PartNumberInput';
 import TaskList from './TaskList';
 import SettingsTab from './SettingsTab';
 import AnalyticsTab from './AnalyticsTab';
-import { UserData, DBItem, PartRequest, BreakSchedule, SystemBreak } from '../App';
+import { UserData, DBItem, PartRequest, BreakSchedule, SystemBreak, BOMItem, BOMRequest } from '../App';
 import { useLanguage } from './LanguageContext';
 
 // Tell TypeScript that XLSX is a global variable from the script tag in index.html
@@ -103,6 +103,16 @@ interface PartSearchScreenProps {
   onAddBreakSchedule: (start: string, end: string) => void;
   onDeleteBreakSchedule: (id: string) => void;
   onEndBreak: () => void;
+  // BOM
+  bomItems: BOMItem[];
+  bomRequests: BOMRequest[];
+  onAddBOMItem: (parent: string, child: string, qty: number) => void;
+  onBatchAddBOMItems: (vals: string[]) => void;
+  onDeleteBOMItem: (id: string) => void;
+  onDeleteAllBOMItems: () => void;
+  onRequestBOM: (parent: string) => Promise<boolean>;
+  onApproveBOMRequest: (req: BOMRequest) => void;
+  onRejectBOMRequest: (id: string) => void;
   // PWA Install
   installPrompt: any;
   onInstallApp: () => void;
@@ -165,6 +175,7 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   partRequests, onRequestPart, onApprovePartRequest, onRejectPartRequest,
   onArchiveTasks, onFetchArchivedTasks,
   breakSchedules, systemBreaks, isBreakActive, onAddBreakSchedule, onDeleteBreakSchedule, onEndBreak,
+  bomItems, bomRequests, onAddBOMItem, onBatchAddBOMItems, onDeleteBOMItem, onDeleteAllBOMItems, onRequestBOM, onApproveBOMRequest, onRejectBOMRequest,
   installPrompt, onInstallApp
 }) => {
   const [selectedPart, setSelectedPart] = useState<DBItem | null>(null);
@@ -181,8 +192,13 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   // Task Filtering State
   const [taskSearchQuery, setTaskSearchQuery] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'entry' | 'tasks' | 'settings' | 'analytics'>('entry');
+  const [activeTab, setActiveTab] = useState<'entry' | 'tasks' | 'settings' | 'analytics' | 'bom'>('entry');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
+  // BOM Calculator State
+  const [bomParentQuery, setBomParentQuery] = useState('');
+  const [bomQuantity, setBomQuantity] = useState('');
+  const [bomRequestStatus, setBomRequestStatus] = useState<'idle' | 'loading' | 'success'>('idle');
 
   // --- LOCAL BREAK LOGIC ---
   const [localBreakActive, setLocalBreakActive] = useState(false);
@@ -216,7 +232,7 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   // Leader and User cannot see settings/analytics. Logistician can.
   const canManage = currentUserRole === 'ADMIN' || currentUserRole === 'SUPERVISOR' || currentUserRole === 'LOGISTICIAN';
   const isAdmin = currentUserRole === 'ADMIN';
-  const pendingRequestsCount = partRequests.length;
+  const pendingRequestsCount = partRequests.length + bomRequests.length;
 
   const workplaceStrings = workplaces.map(w => w.value);
 
@@ -404,6 +420,44 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
       return success;
   };
 
+  // BOM Logic
+  const bomResults = useMemo(() => {
+      if (!bomParentQuery.trim() || !bomQuantity) return [];
+      const qty = parseInt(bomQuantity, 10);
+      if (isNaN(qty) || qty <= 0) return [];
+
+      const children = bomItems.filter(item => item.parentPart.toUpperCase() === bomParentQuery.trim().toUpperCase());
+      return children.map(child => ({
+          ...child,
+          totalRequired: child.quantity * qty // Precise calculation
+      }));
+  }, [bomParentQuery, bomQuantity, bomItems]);
+
+  const handleCreateTaskFromBOM = (childPart: string, requiredQty: number) => {
+      // Find part DBItem or mock one
+      const partObj = parts.find(p => p.value === childPart) || { id: 'bom_gen', value: childPart };
+      setSelectedPart(partObj);
+      
+      // Use integer for order quantity
+      const roundedQty = Math.ceil(requiredQty);
+      setQuantity(roundedQty.toString());
+      setQuantityUnit('pcs');
+      setActiveTab('entry');
+  };
+
+  const handleRequestBOMClick = async () => {
+      if (bomParentQuery.trim()) {
+          setBomRequestStatus('loading');
+          const success = await onRequestBOM(bomParentQuery.trim());
+          if (success) {
+              setBomRequestStatus('success');
+              setTimeout(() => setBomRequestStatus('idle'), 3000);
+          } else {
+              setBomRequestStatus('idle');
+          }
+      }
+  }
+
   return (
     <div className="w-full h-full p-2 md:p-8">
       {/* BREAK BANNER */}
@@ -484,6 +538,12 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                     {tasks.filter(t => !t.isDone).length}
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => setActiveTab('bom')}
+              className={`flex-1 sm:flex-none py-3 px-4 sm:px-6 text-base sm:text-lg font-semibold transition-colors duration-200 text-center whitespace-nowrap ${activeTab === 'bom' ? 'border-b-2 border-teal-400 text-teal-400' : 'text-gray-400 hover:text-white'}`}
+            >
+              {t('tab_bom')}
             </button>
             
             {canManage && (
@@ -702,6 +762,78 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
               </div>
             )}
 
+            {/* BOM CALCULATOR TAB */}
+            {activeTab === 'bom' && (
+              <div>
+                  <h1 className="text-center text-2xl sm:text-3xl font-bold text-teal-400 mb-2">{t('bom_title')}</h1>
+                  <p className="text-center text-gray-400 mb-6 sm:mb-8">{t('bom_subtitle')}</p>
+                  
+                  <div className="max-w-2xl mx-auto bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                          <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-2">{t('bom_parent')}</label>
+                              <PartNumberInput
+                                  parts={parts.map(p => p.value)}
+                                  onPartSelect={(val) => setBomParentQuery(val || '')}
+                                  value={bomParentQuery}
+                                  placeholder="Vyberte výrobok..."
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-2">{t('bom_qty')}</label>
+                              <input 
+                                  type="number" 
+                                  min="1"
+                                  value={bomQuantity}
+                                  onChange={(e) => setBomQuantity(e.target.value)}
+                                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-teal-500"
+                              />
+                          </div>
+                      </div>
+
+                      {bomResults.length > 0 ? (
+                          <div>
+                              <h3 className="text-white font-bold mb-3 border-b border-gray-700 pb-2">{t('bom_results')}</h3>
+                              <div className="space-y-2">
+                                  {bomResults.map((item, idx) => (
+                                      <div key={idx} className="flex justify-between items-center bg-gray-700 p-3 rounded-lg border border-gray-600">
+                                          <div>
+                                              <p className="text-teal-300 font-mono text-lg font-bold">{item.childPart}</p>
+                                              <p className="text-gray-400 text-xs">
+                                                  {t('bom_req_qty')}: <span className="text-white font-bold text-sm">{Math.ceil(item.totalRequired)}</span>
+                                                  {item.totalRequired !== Math.ceil(item.totalRequired) && <span className="ml-1 text-[10px] text-gray-500">({item.totalRequired.toFixed(5)})</span>}
+                                              </p>
+                                          </div>
+                                          <button 
+                                              onClick={() => handleCreateTaskFromBOM(item.childPart, item.totalRequired)}
+                                              className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded text-sm font-bold flex items-center gap-1 transition-colors"
+                                          >
+                                              <span className="text-lg leading-none">+</span> {t('bom_create_task')}
+                                          </button>
+                                      </div>
+                                  ))}
+                              </div>
+                          </div>
+                      ) : (
+                          bomParentQuery && bomQuantity && (
+                              <div className="text-center py-6">
+                                  <p className="text-gray-500 italic mb-4">{t('bom_no_results')}</p>
+                                  <button 
+                                      onClick={handleRequestBOMClick}
+                                      disabled={bomRequestStatus !== 'idle'}
+                                      className={`px-4 py-2 rounded text-sm font-bold transition-colors ${
+                                          bomRequestStatus === 'success' ? 'bg-green-600 text-white' : 'bg-yellow-700 hover:bg-yellow-600 text-white'
+                                      }`}
+                                  >
+                                      {bomRequestStatus === 'loading' ? 'Odosielam...' : bomRequestStatus === 'success' ? t('bom_req_success') : t('bom_request_btn')}
+                                  </button>
+                              </div>
+                          )
+                      )}
+                  </div>
+              </div>
+            )}
+
             {activeTab === 'analytics' && canManage && (
               <div>
                  <AnalyticsTab tasks={tasks} onFetchArchivedTasks={onFetchArchivedTasks} systemBreaks={systemBreaks} />
@@ -738,6 +870,15 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                   breakSchedules={breakSchedules}
                   onAddBreakSchedule={onAddBreakSchedule}
                   onDeleteBreakSchedule={onDeleteBreakSchedule}
+                  // BOM Props
+                  bomItems={bomItems}
+                  bomRequests={bomRequests}
+                  onAddBOMItem={onAddBOMItem}
+                  onBatchAddBOMItems={onBatchAddBOMItems}
+                  onDeleteBOMItem={onDeleteBOMItem}
+                  onDeleteAllBOMItems={onDeleteAllBOMItems}
+                  onApproveBOMRequest={onApproveBOMRequest}
+                  onRejectBOMRequest={onRejectBOMRequest}
                   installPrompt={installPrompt}
                   onInstallApp={onInstallApp}
                 />
