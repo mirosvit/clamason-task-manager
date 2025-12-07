@@ -1,7 +1,4 @@
 
-
-
-
 export const translations = {
   sk: {
     // Login
@@ -119,6 +116,14 @@ export const translations = {
     sect_maint_db_link: "Otvoriť databázu (Firebase)",
     sect_maint_gh_link: "Otvoriť zdrojový kód (GitHub)",
     sect_maint_db_desc: "Priamy prístup k Firestore databáze pre manuálne úpravy.",
+
+    sect_breaks: "6. Manažment prestávok",
+    break_start: "Začiatok (HH:MM)",
+    break_end: "Koniec (HH:MM)",
+    break_active: "PRESTÁVKA PREBIEHA",
+    break_active_desc: "Zadávanie úloh je pozastavené.",
+    break_end_btn: "Ukončiť prestávku",
+    break_blocked_msg: "Počas prestávky nie je možné pridávať úlohy.",
     
     // Analytics
     analytics_title: "Analytika Výroby",
@@ -284,6 +289,14 @@ export const translations = {
     sect_maint_db_link: "Open Database (Firebase)",
     sect_maint_gh_link: "Open Source Code (GitHub)",
     sect_maint_db_desc: "Direct access to the Firestore database for manual edits.",
+
+    sect_breaks: "6. Break Management",
+    break_start: "Start (HH:MM)",
+    break_end: "End (HH:MM)",
+    break_active: "BREAK IN PROGRESS",
+    break_active_desc: "Task entry is suspended.",
+    break_end_btn: "End Break Now",
+    break_blocked_msg: "Cannot add tasks during a break.",
     
     // Analytics
     analytics_title: "Production Analytics",
