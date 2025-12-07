@@ -1,5 +1,8 @@
 
 
+
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import LoginScreen from './components/LoginScreen';
 import PartSearchScreen, { Task, PriorityLevel, InventorySession } from './components/PartSearchScreen';
@@ -24,7 +27,7 @@ export interface UserData {
   id?: string; // Firebase ID
   username: string;
   password: string;
-  role: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER';
+  role: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN';
 }
 
 export interface DBItem {
@@ -43,7 +46,7 @@ export interface PartRequest {
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<string>('');
-  const [currentUserRole, setCurrentUserRole] = useState<'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER'>('USER');
+  const [currentUserRole, setCurrentUserRole] = useState<'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN'>('USER');
   const [tasks, setTasks] = useState<Task[]>([]);
   
   // Data from DB
@@ -196,7 +199,7 @@ const App: React.FC = () => {
 
   // --- 2. AUTH ACTIONS ---
 
-  const handleLogin = (username: string, role: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER') => {
+  const handleLogin = (username: string, role: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN') => {
     setIsAuthenticated(true);
     setCurrentUser(username);
     setCurrentUserRole(role);
@@ -223,7 +226,7 @@ const App: React.FC = () => {
       }
   };
 
-  const handleUpdateUserRole = async (username: string, newRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER') => {
+  const handleUpdateUserRole = async (username: string, newRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN') => {
       const userToUpdate = users.find(u => u.username === username);
       if (userToUpdate && userToUpdate.id) {
           // Prevent changing the main ADMIN role if needed, but allowing generally
@@ -405,7 +408,8 @@ const App: React.FC = () => {
       standardTime: standardTime, // Snapshot current standard time
       isDone: false,
       priority: priority,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      createdBy: currentUser // Store who created the task
     });
   };
 
@@ -477,6 +481,20 @@ const App: React.FC = () => {
           }
 
           await updateDoc(doc(db, 'tasks', id), updateData);
+      }
+  };
+
+  const handleAddNote = async (id: string, note: string) => {
+      await updateDoc(doc(db, 'tasks', id), { note });
+  };
+
+  const handleReleaseTask = async (id: string) => {
+      const task = tasks.find(t => t.id === id);
+      if (task && task.isInProgress) {
+          await updateDoc(doc(db, 'tasks', id), {
+              isInProgress: false,
+              inProgressBy: null
+          });
       }
   };
 
@@ -609,6 +627,8 @@ const App: React.FC = () => {
           onSetInProgress={handleSetInProgress}
           onToggleBlock={handleToggleBlock}
           onMarkAsIncorrect={handleMarkAsIncorrect}
+          onAddNote={handleAddNote}
+          onReleaseTask={handleReleaseTask}
           // User Management Props
           users={users}
           onAddUser={handleAddUser}
