@@ -124,6 +124,11 @@ export const translations = {
     break_active_desc: "Zadávanie úloh je pozastavené.",
     break_end_btn: "Ukončiť prestávku",
     break_blocked_msg: "Počas prestávky nie je možné pridávať úlohy.",
+
+    sect_pwa: "7. Inštalácia aplikácie",
+    pwa_install_btn: "Nainštalovať aplikáciu na plochu",
+    pwa_desc: "Vytvorí odkaz 'TASK MANAGER' na ploche zariadenia pre rýchly prístup.",
+    pwa_installed: "Aplikácia je už nainštalovaná alebo prehliadač nepodporuje automatickú inštaláciu.",
     
     // Analytics
     analytics_title: "Analytika Výroby",
@@ -297,6 +302,11 @@ export const translations = {
     break_active_desc: "Task entry is suspended.",
     break_end_btn: "End Break Now",
     break_blocked_msg: "Cannot add tasks during a break.",
+
+    sect_pwa: "7. App Installation",
+    pwa_install_btn: "Install App to Home Screen",
+    pwa_desc: "Creates a 'TASK MANAGER' shortcut on the device desktop.",
+    pwa_installed: "App is already installed or browser does not support automatic installation.",
     
     // Analytics
     analytics_title: "Production Analytics",
