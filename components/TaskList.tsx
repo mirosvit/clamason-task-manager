@@ -395,7 +395,7 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, currentUserName, tasks
                           </div>
                       </div>
 
-                      {/* Right Side: Quantity & Time */}
+                      {/* Right Side: Quantity & Time & Creator */}
                       <div className="flex flex-col items-end shrink-0">
                           <span className={`px-3 py-1 rounded-md font-bold text-lg sm:text-xl whitespace-nowrap mb-1 ${
                               (task.isDone || isIncorrect) 
@@ -404,7 +404,8 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, currentUserName, tasks
                           }`}>
                               {displayData.quantity}
                           </span>
-                          <span className="text-sm text-gray-400 font-mono">
+                          <span className="text-sm text-gray-400 font-mono text-right">
+                              {task.createdBy && <span className="font-semibold text-gray-500">{task.createdBy} • </span>}
                               {displayData.time}
                           </span>
                       </div>
@@ -422,25 +423,12 @@ const TaskList: React.FC<TaskListProps> = ({ currentUser, currentUserName, tasks
                                 <span>• {task.completionTime}</span>
                             </div>
                         ) : (
-                            /* DETAILED HISTORY FOR COMPLETED TASKS */
-                            <>
-                                {/* Created */}
-                                <div className="flex gap-2">
-                                    <span className="text-gray-600">📅 {t('task_created')}:</span>
-                                    <span>
-                                        <span className="font-semibold text-gray-400">{task.createdBy || '-'}</span> 
-                                        {task.createdAt && <span className="opacity-70"> • {formatDateTime(task.createdAt)}</span>}
-                                    </span>
-                                </div>
-                                {/* Completed */}
-                                <div className="flex gap-2 text-teal-600/80">
-                                    <span className="font-bold">✓ {t('task_completed_label')}:</span>
-                                    <span>
-                                        <span className="font-bold">{task.completedBy || '-'}</span>
-                                        {task.completedAt && <span className="opacity-70"> • {formatDateTime(task.completedAt)}</span>}
-                                    </span>
-                                </div>
-                            </>
+                            /* SIMPLIFIED COMPLETED FOOTER */
+                            <div className="flex items-center gap-2 text-teal-600/80">
+                                <CheckIcon className="w-4 h-4" />
+                                <span className="font-bold">{task.completedBy || '-'}</span>
+                                {task.completionTime && <span className="opacity-70">• {task.completionTime}</span>}
+                            </div>
                         )}
                     </div>
                 )}
