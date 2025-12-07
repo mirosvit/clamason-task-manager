@@ -90,6 +90,7 @@ export const translations = {
     bom_no_results: "Žiadne komponenty nenájdené pre tento výrobok.",
     bom_request_btn: "Nenašlo sa? ➕ Požiadať o pridanie BOM",
     bom_req_success: "Žiadosť o BOM bola odoslaná.",
+    bom_select_wp: "Cieľové pracovisko",
 
     // Settings
     settings_title: "Nastavenia systému",
@@ -153,6 +154,19 @@ export const translations = {
     bom_bulk_label: "Hromadné pridanie (Parent;Child;Qty):",
     bom_bulk_btn: "Importovať BOM",
     bom_req_title: "Žiadosti o BOM",
+
+    sect_roles: "9. Manažment Rolí a Oprávnení",
+    role_add_btn: "Vytvoriť Rolu",
+    role_name_place: "Názov role (napr. AUDITOR)",
+    perm_manage_users: "Správa užívateľov",
+    perm_manage_db: "Správa databázy (Diely/Pracoviská)",
+    perm_manage_bom: "Správa BOM",
+    perm_view_analytics: "Zobraziť Analytiku",
+    perm_view_settings: "Zobraziť Nastavenia",
+    perm_edit_tasks: "Editovať úlohy",
+    perm_delete_tasks: "Mazať úlohy",
+    perm_archive: "Archivovať dáta",
+    perm_manage_breaks: "Správa prestávok",
 
     // Analytics
     analytics_title: "Analytika Výroby",
@@ -341,6 +355,20 @@ export const translations = {
     bom_bulk_label: "Bulk Add (Parent;Child;Qty):",
     bom_bulk_btn: "Import BOM",
     bom_req_title: "BOM Requests",
+    bom_select_wp: "Target Workplace",
+
+    sect_roles: "9. Role & Permission Management",
+    role_add_btn: "Create Role",
+    role_name_place: "Role Name (e.g. AUDITOR)",
+    perm_manage_users: "Manage Users",
+    perm_manage_db: "Manage Database (Parts/WP)",
+    perm_manage_bom: "Manage BOM",
+    perm_view_analytics: "View Analytics",
+    perm_view_settings: "View Settings",
+    perm_edit_tasks: "Edit Tasks",
+    perm_delete_tasks: "Delete Tasks",
+    perm_archive: "Archive Data",
+    perm_manage_breaks: "Manage Breaks",
 
     // BOM
     bom_title: "BOM Calculator",
