@@ -70,6 +70,9 @@ const App: React.FC = () => {
   const [systemBreaks, setSystemBreaks] = useState<SystemBreak[]>([]);
   const [isBreakActive, setIsBreakActive] = useState(false);
 
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
   // --- 1. INITIALIZATION & DATA FETCHING ---
 
   // Check LocalStorage for Login
@@ -82,6 +85,24 @@ const App: React.FC = () => {
       setIsAuthenticated(true);
     }
   }, []);
+
+  // Listen for PWA Install Event
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault(); // Prevent the mini-infobar from appearing on mobile
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    setDeferredPrompt(null);
+  };
 
   // Fetch Users
   useEffect(() => {
@@ -201,21 +222,41 @@ const App: React.FC = () => {
 
       const checkTime = () => {
           const now = new Date();
-          const currentHM = now.toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit' });
+          // FIX: Manual time formatting to strictly match HH:MM format (avoiding browser locale issues)
+          const hours = String(now.getHours()).padStart(2, '0');
+          const minutes = String(now.getMinutes()).padStart(2, '0');
+          const currentHM = `${hours}:${minutes}`;
           
           // Check if we should START a break
-          const matchingStart = breakSchedules.find(s => s.start === currentHM);
-          if (matchingStart && !isBreakActive) {
+          // We check if current time equals start time
+          // Or if current time is INSIDE a break window but no active break exists (recovery mode)
+          const matchingSchedule = breakSchedules.find(s => {
+              return currentHM >= s.start && currentHM < s.end;
+          });
+
+          if (matchingSchedule && !isBreakActive) {
               // Create active break session
-              addDoc(collection(db, 'system_breaks'), {
-                  start: Date.now(),
-                  isActive: true
-              });
+              // Check if we recently created one to avoid duplicates (naive check)
+              const recentlyCreated = systemBreaks.some(sb => 
+                  sb.isActive && Math.abs(sb.start - Date.now()) < 60000
+              );
+              
+              if (!recentlyCreated) {
+                  addDoc(collection(db, 'system_breaks'), {
+                      start: Date.now(),
+                      isActive: true
+                  });
+              }
           }
 
-          // Check if we should END a break (Scheduled end)
+          // Check if we should END a break
+          // Only end if the current time matches the End time of a schedule
           const matchingEnd = breakSchedules.find(s => s.end === currentHM);
-          if (matchingEnd && isBreakActive) {
+          
+          // Or if we are active, but NO schedule matches current time anymore (safety net)
+          const isInsideAnySchedule = breakSchedules.some(s => currentHM >= s.start && currentHM < s.end);
+
+          if ((matchingEnd || !isInsideAnySchedule) && isBreakActive) {
               // Find the active break doc and close it
               const activeBreak = systemBreaks.find(b => b.isActive);
               if (activeBreak) {
@@ -227,7 +268,7 @@ const App: React.FC = () => {
           }
       };
 
-      const interval = setInterval(checkTime, 60000); // Check every minute
+      const interval = setInterval(checkTime, 10000); // Check every 10 seconds for better responsiveness
       return () => clearInterval(interval);
   }, [breakSchedules, isBreakActive, systemBreaks]);
 
@@ -442,18 +483,28 @@ const App: React.FC = () => {
       priority: PriorityLevel = 'NORMAL'
     ) => {
     
-    // Check Break Status
-    if (isBreakActive && currentUserRole !== 'ADMIN') {
+    // STRICT BREAK CHECK LOGIC
+    // 1. Check if DB says break is active
+    let blocked = isBreakActive;
+
+    // 2. Double check local time against schedules (in case DB is lagging)
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const currentHM = `${hours}:${minutes}`;
+
+    const isLocalBreakTime = breakSchedules.some(s => currentHM >= s.start && currentHM < s.end);
+    
+    if (isLocalBreakTime) blocked = true;
+
+    if (blocked && currentUserRole !== 'ADMIN') {
         alert("Počas prestávky nie je možné pridávať úlohy.");
         return;
     }
 
-    const now = new Date();
     const day = String(now.getDate()).padStart(2, '0');
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const year = String(now.getFullYear()).slice(-2);
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
     
     const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
@@ -732,6 +783,9 @@ const App: React.FC = () => {
           onAddBreakSchedule={handleAddBreakSchedule}
           onDeleteBreakSchedule={handleDeleteBreakSchedule}
           onEndBreak={handleManualEndBreak}
+          // PWA Install
+          installPrompt={deferredPrompt}
+          onInstallApp={handleInstallApp}
         />
       )}
     </div>
