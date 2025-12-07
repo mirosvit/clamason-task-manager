@@ -4,7 +4,7 @@ import { UserData } from '../App';
 import { useLanguage } from './LanguageContext';
 
 interface LoginScreenProps {
-  onLoginSuccess: (username: string, role: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER') => void;
+  onLoginSuccess: (username: string, role: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN') => void;
   users: UserData[];
 }
 
