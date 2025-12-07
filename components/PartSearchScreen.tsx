@@ -39,10 +39,16 @@ export interface Task {
   missingReason?: string;
   isInProgress?: boolean;
   inProgressBy?: string | null;
+  
+  // Lifecycle fields
   createdAt?: number; 
+  createdBy?: string; // Author of the task
   startedAt?: number; 
   completedAt?: number; 
   
+  // Notes
+  note?: string;
+
   // Inventory / Blocking
   isBlocked?: boolean;
   inventoryHistory?: InventorySession[];
@@ -50,7 +56,7 @@ export interface Task {
 
 interface PartSearchScreenProps {
   currentUser: string;
-  currentUserRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER';
+  currentUserRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN';
   onLogout: () => void;
   tasks: Task[];
   onAddTask: (partNumber: string, workplace: string, quantity: string, quantityUnit: string, priority: PriorityLevel) => void; 
@@ -61,11 +67,13 @@ interface PartSearchScreenProps {
   onToggleMissing: (id: string, reason?: string) => void; 
   onSetInProgress: (id: string) => void;
   onToggleBlock: (id: string) => void; // New prop for inventory blocking
+  onAddNote: (id: string, note: string) => void;
+  onReleaseTask: (id: string) => void;
   // User Management
   users: UserData[];
   onAddUser: (user: UserData) => void;
   onUpdatePassword: (username: string, newPass: string) => void;
-  onUpdateUserRole: (username: string, newRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER') => void;
+  onUpdateUserRole: (username: string, newRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN') => void;
   onDeleteUser: (username: string) => void;
   // DB Management
   parts: DBItem[];
@@ -128,6 +136,8 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   onToggleMissing,
   onSetInProgress,
   onToggleBlock,
+  onAddNote,
+  onReleaseTask,
   users,
   onAddUser,
   onUpdatePassword,
@@ -158,7 +168,8 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   const hasUnfinishedTasks = tasks.some(task => !task.isDone);
-  const canManage = currentUserRole === 'ADMIN' || currentUserRole === 'SUPERVISOR';
+  // Leader and User cannot see settings/analytics. Logistician can.
+  const canManage = currentUserRole === 'ADMIN' || currentUserRole === 'SUPERVISOR' || currentUserRole === 'LOGISTICIAN';
   const pendingRequestsCount = partRequests.length;
 
   const workplaceStrings = workplaces.map(w => w.value);
@@ -337,7 +348,6 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
       const success = await onRequestPart(part);
       if (success) {
           // Do not clear part, let the user see the success on the button
-          // setSelectedPart(null); 
       }
       return success;
   };
@@ -609,6 +619,8 @@ const PartSearchScreen: React.FC<PartSearchScreenProps> = ({
                   onToggleMissing={onToggleMissing}
                   onSetInProgress={onSetInProgress}
                   onToggleBlock={onToggleBlock}
+                  onAddNote={onAddNote}
+                  onReleaseTask={onReleaseTask}
                 />
               </div>
             )}
