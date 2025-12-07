@@ -66,6 +66,18 @@ export interface BOMRequest {
     requestedAt: number;
 }
 
+export interface Role {
+    id: string;
+    name: string;
+    isSystem?: boolean; // Prevent deletion of system roles
+}
+
+export interface Permission {
+    id: string;
+    roleId: string;
+    permissionName: string;
+}
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<string>('');
@@ -87,6 +99,10 @@ const App: React.FC = () => {
   // BOM State
   const [bomItems, setBomItems] = useState<BOMItem[]>([]);
   const [bomRequests, setBomRequests] = useState<BOMRequest[]>([]);
+
+  // Roles & Permissions State
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
 
   // PWA Install Prompt State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -252,6 +268,29 @@ const App: React.FC = () => {
       return () => unsubscribe();
   }, []);
 
+  // Fetch Roles
+  useEffect(() => {
+      const q = query(collection(db, 'roles'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+          const fetchedRoles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Role));
+          if (fetchedRoles.length === 0) {
+              seedRolesAndPermissions();
+          } else {
+              setRoles(fetchedRoles);
+          }
+      });
+      return () => unsubscribe();
+  }, []);
+
+  // Fetch Permissions
+  useEffect(() => {
+      const q = query(collection(db, 'permissions'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+          setPermissions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Permission)));
+      });
+      return () => unsubscribe();
+  }, []);
+
   // --- BREAK SCHEDULER LOGIC ---
   useEffect(() => {
       if (!breakSchedules.length) return;
@@ -333,6 +372,52 @@ const App: React.FC = () => {
           mrBatch.set(ref, { value: r });
       });
       await mrBatch.commit();
+  };
+
+  const seedRolesAndPermissions = async () => {
+      const batch = writeBatch(db);
+      
+      // Default Roles
+      const roleDefs = [
+          { name: 'ADMIN', isSystem: true },
+          { name: 'USER', isSystem: true },
+          { name: 'SUPERVISOR', isSystem: true },
+          { name: 'LEADER', isSystem: true },
+          { name: 'LOGISTICIAN', isSystem: true }
+      ];
+
+      // Insert Roles and store IDs
+      const roleMap: Record<string, string> = {}; // Name -> ID
+      for (const r of roleDefs) {
+          const ref = doc(collection(db, 'roles'));
+          batch.set(ref, r);
+          roleMap[r.name] = ref.id;
+      }
+
+      // Default Permissions Logic (Mapping)
+      const perms = [
+          'perm_manage_users', 'perm_manage_db', 'perm_manage_bom', 
+          'perm_view_analytics', 'perm_view_settings', 
+          'perm_edit_tasks', 'perm_delete_tasks', 
+          'perm_archive', 'perm_manage_breaks'
+      ];
+
+      // Assign perms to roles based on logic
+      const assign = (roleName: string, permList: string[]) => {
+          const roleId = roleMap[roleName];
+          permList.forEach(p => {
+              const ref = doc(collection(db, 'permissions'));
+              batch.set(ref, { roleId, permissionName: p });
+          });
+      };
+
+      assign('ADMIN', perms); // All perms
+      assign('SUPERVISOR', perms); // All perms (simplified)
+      assign('LOGISTICIAN', ['perm_manage_db', 'perm_manage_bom', 'perm_view_analytics', 'perm_view_settings', 'perm_edit_tasks']);
+      assign('LEADER', ['perm_edit_tasks']); // Only edit task priority
+      assign('USER', []); // Basic user has no special perms
+
+      await batch.commit();
   };
 
 
@@ -523,6 +608,38 @@ const App: React.FC = () => {
 
   const handleRejectBOMRequest = async (id: string) => {
       await deleteDoc(doc(db, 'bom_requests', id));
+  };
+
+  // --- Role & Permission Actions ---
+  const handleAddRole = async (name: string) => {
+      await addDoc(collection(db, 'roles'), { name: name.toUpperCase(), isSystem: false });
+  };
+
+  const handleDeleteRole = async (id: string) => {
+      await deleteDoc(doc(db, 'roles', id));
+      // Cleanup permissions for this role
+      const q = query(collection(db, 'permissions'), where('roleId', '==', id));
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+  };
+
+  const handleUpdatePermission = async (permissionId: string, roleName: string, hasPermission: boolean) => {
+      // Find role ID
+      const role = roles.find(r => r.name === roleName);
+      if (!role) return;
+
+      if (hasPermission) {
+          // Add
+          await addDoc(collection(db, 'permissions'), { roleId: role.id, permissionName: permissionId });
+      } else {
+          // Remove - find specific doc
+          const toRemove = permissions.find(p => p.roleId === role.id && p.permissionName === permissionId);
+          if (toRemove) {
+              await deleteDoc(doc(db, 'permissions', toRemove.id));
+          }
+      }
   };
 
 
@@ -885,6 +1002,12 @@ const App: React.FC = () => {
           onRequestBOM={handleRequestBOM}
           onApproveBOMRequest={handleApproveBOMRequest}
           onRejectBOMRequest={handleRejectBOMRequest}
+          // Role Props
+          roles={roles}
+          permissions={permissions}
+          onAddRole={handleAddRole}
+          onDeleteRole={handleDeleteRole}
+          onUpdatePermission={handleUpdatePermission}
           // PWA Install
           installPrompt={deferredPrompt}
           onInstallApp={handleInstallApp}
