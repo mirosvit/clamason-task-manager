@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { LanguageProvider } from './components/LanguageContext';
+import './index.css'; // This line is crucial for loading Tailwind styles
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -10,13 +11,12 @@ if (!rootElement) {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // FIX: Corrected property access for serviceWorker.
     navigator.serviceWorker.register('/sw.js')
       .then(registration => {
-        console.log('SW registered: ', registration);
+        console.log('PWA Service Worker registered: ', registration);
       })
       .catch(registrationError => {
-        console.log('SW registration failed: ', registrationError);
+        console.log('PWA SW registration failed: ', registrationError);
       });
   });
 }
