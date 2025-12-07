@@ -34,6 +34,9 @@ interface SettingsTabProps {
   breakSchedules: BreakSchedule[];
   onAddBreakSchedule: (start: string, end: string) => void;
   onDeleteBreakSchedule: (id: string) => void;
+  // PWA
+  installPrompt: any;
+  onInstallApp: () => void;
 }
 
 const EyeIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -50,7 +53,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onAddWorkplace, onBatchAddWorkplaces, onDeleteWorkplace, onDeleteAllWorkplaces,
   onAddMissingReason, onDeleteMissingReason,
   partRequests, onApprovePartRequest, onRejectPartRequest, onArchiveTasks,
-  breakSchedules, onAddBreakSchedule, onDeleteBreakSchedule
+  breakSchedules, onAddBreakSchedule, onDeleteBreakSchedule,
+  installPrompt, onInstallApp
 }) => {
   // User State
   const [newUser, setNewUser] = useState('');
@@ -77,6 +81,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const { t } = useLanguage();
 
   const isAdmin = currentUserRole === 'ADMIN';
+  const isSuper = currentUserRole === 'SUPERVISOR';
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
@@ -542,9 +547,34 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
            </div>
        )}
 
+       {/* 7. SECTION: APP INSTALLATION (ADMIN/SUPERVISOR ONLY) */}
+       {(isAdmin || isSuper) && (
+           <div className="bg-gray-900 rounded-xl p-6 shadow-lg border border-blue-600/50">
+               <h2 className="text-xl font-bold text-blue-400 mb-4 border-b border-gray-700 pb-2">{t('sect_pwa')}</h2>
+               <p className="text-gray-400 text-sm mb-4">
+                   {t('pwa_desc')}
+               </p>
+               {installPrompt ? (
+                   <button 
+                       onClick={onInstallApp}
+                       className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-lg transition-colors flex items-center gap-2 shadow-lg"
+                   >
+                       <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                       </svg>
+                       {t('pwa_install_btn')}
+                   </button>
+               ) : (
+                   <p className="text-gray-500 italic text-sm border border-gray-700 p-2 rounded bg-gray-800 text-center">
+                       {t('pwa_installed')}
+                   </p>
+               )}
+           </div>
+       )}
+
        {/* Footer Credit */}
        <div className="pt-8 pb-4 text-center text-xs text-gray-600 border-t border-gray-800">
-           <p>Clamason Task Manager v1.3</p>
+           <p>Clamason Task Manager v1.4</p>
            <p className="mt-1">{t('created_by')}</p>
        </div>
 
