@@ -1,5 +1,7 @@
 
 
+
+
 export const translations = {
   sk: {
     // Login
@@ -63,10 +65,15 @@ export const translations = {
     status_missing: "CHÝBAJÚCI TOVAR",
     status_resolving: "RIEŠI:",
     status_incorrect: "Chybne Zadaná",
+    task_created: "Zadal",
+    task_started: "Začal",
+    task_completed_label: "Dokončil",
     btn_save: "Uložiť",
     btn_cancel: "Zrušiť",
     btn_finish: "Dokončiť",
     btn_copy: "Kopírovať",
+    btn_stop: "Vrátiť",
+    btn_note: "Poznámka",
     copied_msg: "OK!",
     btn_mark_incorrect: "Označiť ako chybne zadanú",
     modal_missing_title: "Vyberte dôvod chýbajúceho tovaru",
@@ -223,10 +230,15 @@ export const translations = {
     status_missing: "MISSING ITEM",
     status_resolving: "RESOLVING:",
     status_incorrect: "Incorrect Entry",
+    task_created: "Created",
+    task_started: "Started",
+    task_completed_label: "Completed",
     btn_save: "Save",
     btn_cancel: "Cancel",
     btn_finish: "Finish",
     btn_copy: "Copy",
+    btn_stop: "Return",
+    btn_note: "Note",
     copied_msg: "OK!",
     btn_mark_incorrect: "Mark as Incorrect",
     modal_missing_title: "Select Missing Reason",
