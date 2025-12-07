@@ -1,8 +1,4 @@
 
-
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import LoginScreen from './components/LoginScreen';
 import PartSearchScreen, { Task, PriorityLevel, InventorySession } from './components/PartSearchScreen';
@@ -43,6 +39,19 @@ export interface PartRequest {
     requestedAt: number;
 }
 
+export interface BreakSchedule {
+    id: string;
+    start: string; // "HH:MM"
+    end: string;   // "HH:MM"
+}
+
+export interface SystemBreak {
+    id: string;
+    start: number;
+    end?: number;
+    isActive: boolean;
+}
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<string>('');
@@ -55,6 +64,11 @@ const App: React.FC = () => {
   const [workplaces, setWorkplaces] = useState<DBItem[]>([]);
   const [missingReasons, setMissingReasons] = useState<DBItem[]>([]);
   const [partRequests, setPartRequests] = useState<PartRequest[]>([]);
+  
+  // Break Management State
+  const [breakSchedules, setBreakSchedules] = useState<BreakSchedule[]>([]);
+  const [systemBreaks, setSystemBreaks] = useState<SystemBreak[]>([]);
+  const [isBreakActive, setIsBreakActive] = useState(false);
 
   // --- 1. INITIALIZATION & DATA FETCHING ---
 
@@ -89,18 +103,13 @@ const App: React.FC = () => {
 
   // Fetch Tasks (Real-time)
   useEffect(() => {
-    const q = query(collection(db, 'tasks')); // Removing orderBy temporarily to handle client-side sorting if needed or fix index issues
+    const q = query(collection(db, 'tasks')); 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const newTasks = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       } as Task));
 
-      // Sort tasks: 
-      // 1. Unfinished first
-      // 2. Priority (URGENT > NORMAL > LOW)
-      // 3. Date Created (Newest first for unfinished, Oldest first for finished? Or just standard time)
-      
       const priorityOrder: Record<string, number> = { 'URGENT': 0, 'NORMAL': 1, 'LOW': 2 };
 
       const sortedTasks = newTasks.sort((a, b) => {
@@ -108,23 +117,21 @@ const App: React.FC = () => {
         if (a.isDone !== b.isDone) {
             return a.isDone ? 1 : -1;
         }
-        
-        // 2. Priority (Only for active tasks mainly, but good for all)
+        // 2. Priority
         const pA = priorityOrder[a.priority || 'NORMAL'];
         const pB = priorityOrder[b.priority || 'NORMAL'];
         if (pA !== pB) {
             return pA - pB;
         }
-
-        // 3. Time (If createdAt exists, use it)
+        // 3. Time
         const timeA = a.createdAt || 0;
         const timeB = b.createdAt || 0;
-        return timeA - timeB; // Oldest first
+        return timeA - timeB; 
       });
 
       setTasks(sortedTasks);
     }, (error) => {
-        console.error("Error fetching tasks. Check Firebase permissions or console for links to create indexes.", error);
+        console.error("Error fetching tasks.", error);
     });
     return () => unsubscribe();
   }, []);
@@ -165,13 +172,70 @@ const App: React.FC = () => {
       return () => unsubscribe();
   }, []);
 
+  // Fetch Break Schedules
+  useEffect(() => {
+      const q = query(collection(db, 'break_schedules'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+          setBreakSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BreakSchedule)));
+      });
+      return () => unsubscribe();
+  }, []);
+
+  // Fetch System Breaks (History & Active status)
+  useEffect(() => {
+      const q = query(collection(db, 'system_breaks'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+          const breaks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemBreak));
+          setSystemBreaks(breaks);
+          
+          // Determine if currently active based on DB state
+          const activeBreak = breaks.find(b => b.isActive);
+          setIsBreakActive(!!activeBreak);
+      });
+      return () => unsubscribe();
+  }, []);
+
+  // --- BREAK SCHEDULER LOGIC ---
+  useEffect(() => {
+      if (!breakSchedules.length) return;
+
+      const checkTime = () => {
+          const now = new Date();
+          const currentHM = now.toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit' });
+          
+          // Check if we should START a break
+          const matchingStart = breakSchedules.find(s => s.start === currentHM);
+          if (matchingStart && !isBreakActive) {
+              // Create active break session
+              addDoc(collection(db, 'system_breaks'), {
+                  start: Date.now(),
+                  isActive: true
+              });
+          }
+
+          // Check if we should END a break (Scheduled end)
+          const matchingEnd = breakSchedules.find(s => s.end === currentHM);
+          if (matchingEnd && isBreakActive) {
+              // Find the active break doc and close it
+              const activeBreak = systemBreaks.find(b => b.isActive);
+              if (activeBreak) {
+                  updateDoc(doc(db, 'system_breaks', activeBreak.id), {
+                      end: Date.now(),
+                      isActive: false
+                  });
+              }
+          }
+      };
+
+      const interval = setInterval(checkTime, 60000); // Check every minute
+      return () => clearInterval(interval);
+  }, [breakSchedules, isBreakActive, systemBreaks]);
+
 
   const seedDatabase = async () => {
-      // Default Users
       await addDoc(collection(db, 'users'), { username: 'USER', password: '123', role: 'USER' });
       await addDoc(collection(db, 'users'), { username: 'ADMIN', password: '321', role: 'ADMIN' });
       
-      // Default Parts
       const partsBatch = writeBatch(db);
       initialParts.forEach(p => {
           const ref = doc(collection(db, 'parts'));
@@ -179,7 +243,6 @@ const App: React.FC = () => {
       });
       await partsBatch.commit();
 
-      // Default Workplaces
       const wpBatch = writeBatch(db);
       initialWorkplaces.forEach(w => {
           const ref = doc(collection(db, 'workplaces'));
@@ -187,7 +250,6 @@ const App: React.FC = () => {
       });
       await wpBatch.commit();
 
-      // Default Missing Reasons
       const mrBatch = writeBatch(db);
       initialMissingReasons.forEach(r => {
           const ref = doc(collection(db, 'missing_reasons'));
@@ -229,7 +291,6 @@ const App: React.FC = () => {
   const handleUpdateUserRole = async (username: string, newRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN') => {
       const userToUpdate = users.find(u => u.username === username);
       if (userToUpdate && userToUpdate.id) {
-          // Prevent changing the main ADMIN role if needed, but allowing generally
           await updateDoc(doc(db, 'users', userToUpdate.id), { role: newRole });
       }
   }
@@ -276,7 +337,6 @@ const App: React.FC = () => {
   const handleBatchAddWorkplaces = async (vals: string[]) => {
       const batch = writeBatch(db);
       vals.forEach(line => {
-          // Parse format: "WorkplaceName;StandardTime"
           const parts = line.split(';');
           const val = parts[0].trim();
           let time = 0;
@@ -305,7 +365,6 @@ const App: React.FC = () => {
       await batch.commit();
   };
 
-  // Missing Reasons Management
   const handleAddMissingReason = async (val: string) => {
       await addDoc(collection(db, 'missing_reasons'), { value: val });
   };
@@ -314,18 +373,35 @@ const App: React.FC = () => {
       await deleteDoc(doc(db, 'missing_reasons', id));
   };
 
+  // --- Break Schedule Actions ---
+  const handleAddBreakSchedule = async (start: string, end: string) => {
+      await addDoc(collection(db, 'break_schedules'), { start, end });
+  };
+
+  const handleDeleteBreakSchedule = async (id: string) => {
+      await deleteDoc(doc(db, 'break_schedules', id));
+  };
+
+  const handleManualEndBreak = async () => {
+      const activeBreak = systemBreaks.find(b => b.isActive);
+      if (activeBreak) {
+          await updateDoc(doc(db, 'system_breaks', activeBreak.id), {
+              end: Date.now(),
+              isActive: false
+          });
+      }
+  };
+
 
   // --- 4. REQUEST ACTIONS ---
   
   const handleRequestNewPart = async (partNumber: string): Promise<boolean> => {
-      // 1. Validation: Check if part already exists in DB (Case insensitive)
       const existsInDb = parts.some(p => p.value.toUpperCase() === partNumber.toUpperCase());
       if (existsInDb) {
           alert('Tento diel už v databáze existuje.');
           return false;
       }
 
-      // 2. Validation: Check if already requested
       const alreadyRequested = partRequests.some(r => r.partNumber.toUpperCase() === partNumber.toUpperCase());
       if (alreadyRequested) {
           alert('O tento diel už bolo požiadané.');
@@ -338,7 +414,6 @@ const App: React.FC = () => {
               requestedBy: currentUser,
               requestedAt: Date.now()
           });
-          console.log("Request added successfully");
           return true;
       } catch (error) {
           console.error("Error adding request:", error);
@@ -348,9 +423,7 @@ const App: React.FC = () => {
   };
 
   const handleApprovePartRequest = async (req: PartRequest) => {
-      // Add to Parts
       await handleAddPart(req.partNumber);
-      // Delete Request
       await deleteDoc(doc(db, 'part_requests', req.id));
   };
 
@@ -369,7 +442,12 @@ const App: React.FC = () => {
       priority: PriorityLevel = 'NORMAL'
     ) => {
     
-    // Construct the legacy text string for display purposes
+    // Check Break Status
+    if (isBreakActive && currentUserRole !== 'ADMIN') {
+        alert("Počas prestávky nie je možné pridávať úlohy.");
+        return;
+    }
+
     const now = new Date();
     const day = String(now.getDate()).padStart(2, '0');
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -395,21 +473,20 @@ const App: React.FC = () => {
 
     const taskText = `${formattedDate} / ${partNumber} / ${workplace} / Počet: ${formattedQty}`;
 
-    // Lookup standard time for the workplace
     const workplaceObj = workplaces.find(wp => wp.value === workplace);
     const standardTime = workplaceObj?.standardTime || 0;
 
     await addDoc(collection(db, 'tasks'), {
-      text: taskText, // Legacy support
+      text: taskText,
       partNumber,
       workplace,
       quantity,
       quantityUnit,
-      standardTime: standardTime, // Snapshot current standard time
+      standardTime: standardTime,
       isDone: false,
       priority: priority,
       createdAt: Date.now(),
-      createdBy: currentUser // Store who created the task
+      createdBy: currentUser 
     });
   };
 
@@ -424,20 +501,15 @@ const App: React.FC = () => {
       };
 
       if (newState) {
-          // Marking as Done
           const now = new Date();
           const timeString = now.toLocaleTimeString('sk-SK');
           updateData.completionTime = timeString;
           updateData.completedBy = currentUser;
-          updateData.completedAt = Date.now(); // Store timestamp for analytics
-          // Automatically stop "In Progress" if it was active
+          updateData.completedAt = Date.now();
           updateData.isInProgress = false;
           updateData.inProgressBy = null;
-          // Unblock if it was blocked? Or let inventory stay? 
-          // Usually if done, it shouldn't be blocked.
           updateData.isBlocked = false; 
       } else {
-          // Reopening
           updateData.completionTime = null;
           updateData.completedBy = null;
           updateData.completedAt = null;
@@ -475,7 +547,6 @@ const App: React.FC = () => {
               inProgressBy: newStatus ? currentUser : null
           };
           
-          // If starting progress, record start time if not already set
           if (newStatus && !task.startedAt) {
               updateData.startedAt = Date.now();
           }
@@ -529,10 +600,8 @@ const App: React.FC = () => {
           const inventoryHistory = task.inventoryHistory ? [...task.inventoryHistory] : [];
           
           if (isBlocked) {
-              // Starting blockage
               inventoryHistory.push({ start: Date.now() });
           } else {
-              // Ending blockage - find the last open session
               const lastIndex = inventoryHistory.length - 1;
               if (lastIndex >= 0 && !inventoryHistory[lastIndex].end) {
                   inventoryHistory[lastIndex].end = Date.now();
@@ -556,14 +625,13 @@ const App: React.FC = () => {
         const q = query(
             collection(db, 'tasks'), 
             where('isDone', '==', true),
-            limit(1000) // Safety limit
+            limit(1000) 
         );
         
         const snapshot = await getDocs(q);
         
         const toArchiveDocs = snapshot.docs.filter(doc => {
             const task = doc.data() as Task;
-            // Archive if it's older than 24h OR if it's a legacy task without a completion timestamp
             return !task.completedAt || task.completedAt < cutoffTime;
         });
 
@@ -657,6 +725,13 @@ const App: React.FC = () => {
           // Archive
           onArchiveTasks={handleArchiveTasks}
           onFetchArchivedTasks={fetchArchivedTasks}
+          // Breaks
+          breakSchedules={breakSchedules}
+          systemBreaks={systemBreaks}
+          isBreakActive={isBreakActive}
+          onAddBreakSchedule={handleAddBreakSchedule}
+          onDeleteBreakSchedule={handleDeleteBreakSchedule}
+          onEndBreak={handleManualEndBreak}
         />
       )}
     </div>
