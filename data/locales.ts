@@ -1,4 +1,3 @@
-
 export const translations = {
   sk: {
     // Login
@@ -12,22 +11,27 @@ export const translations = {
 
     // Header
     logout: "Odhlásiť",
+    fullscreen_on: "Na celú obrazovku",
+    fullscreen_off: "Klasické zobrazenie",
     
     // Tabs
-    tab_entry: "Zadávanie",
+    tab_entry: "Zadávanie úloh",
     tab_tasks: "Úlohy",
     tab_analytics: "Analytika",
     tab_settings: "Nastavenia",
     tab_bom: "BOM (Kusovník)",
+    tab_missing: "Chýbajúci tovar",
+    tab_permissions: "Oprávnenia",
 
     // Entry Screen
-    search_title: "Vyhľadávanie dielov",
+    search_title: "Zadávanie úloh",
     search_subtitle: "Zadajte požadované údaje.",
     priority_label: "Priorita",
     prio_low: "Nízka",
     prio_normal: "Normálna",
     prio_urgent: "URGENT",
-    part_number: "Číslo dielu",
+    prio_adhoc: "AD-HOC",
+    part_number: "Číslo dielu / Text úlohy",
     part_placeholder: "Zadajte alebo vyberte číslo dielu...",
     workplace: "Pracovisko",
     workplace_placeholder: "Zadajte alebo vyberte pracovisko...",
@@ -36,10 +40,6 @@ export const translations = {
     unit_boxes: "Boxy",
     unit_pallet: "Paleta",
     pcs_placeholder: "Zadajte počet kusov...",
-    boxes_placeholder: "Zadajte počet boxov...",
-    pallet_placeholder: "Zadajte počet paliet...",
-    result_label: "Výsledný záznam:",
-    result_empty: "Pre zobrazenie záznamu vyplňte všetky polia.",
     send_btn: "Odoslať do úloh",
     send_urgent_btn: "ODOSLAŤ URGENTNE",
     sent_msg: "Odoslané!",
@@ -76,6 +76,9 @@ export const translations = {
     btn_mark_incorrect: "Označiť ako chybne zadanú",
     modal_missing_title: "Vyberte dôvod chýbajúceho tovaru",
     modal_no_reasons: "Žiadne dôvody nie sú definované.",
+    alert_missing_title: "⚠️ UPOZORNENIE: Chýbajúci Tovar",
+    alert_missing_desc: "bol nahlásený ako chýbajúci.",
+    alert_btn_ok: "Rozumiem",
     
     // BOM
     bom_title: "BOM Kalkulačka",
@@ -99,8 +102,10 @@ export const translations = {
     req_approve: "Schváliť",
     req_reject: "Zamietnuť",
     no_requests: "Žiadne čakajúce žiadosti.",
+    search_db_placeholder: "Hľadať...",
     
-    sect_users: "1. Správa užívateľov",
+    sect_users_manage: "1a. Správa užívateľov (Rola / Heslo)",
+    sect_users_delete: "1b. Odstránenie užívateľov",
     user_add_title: "PRIDAŤ UŽÍVATEĽA",
     user_name: "Meno",
     user_pass: "Heslo",
@@ -127,7 +132,9 @@ export const translations = {
     sect_maint: "5. Údržba dát",
     maint_desc: "Ak je aplikácia pomalá, môžete presunúť staré dokončené úlohy do archívu.",
     maint_info: "Presunú sa iba dokončené úlohy staršie ako 24 hodín.",
+    maint_info_missing: "Presunú sa nahlásené položky staršie ako 72 hodín.",
     archive_btn: "📦 Archivovať staré úlohy (> 24h)",
+    archive_missing_btn: "🗄️ Archivovať Chýbajúci tovar (> 72h)",
     archiving: "Archivujem...",
     sect_maint_db_link: "Otvoriť databázu (Firebase)",
     sect_maint_gh_link: "Otvoriť zdrojový kód (GitHub)",
@@ -137,7 +144,7 @@ export const translations = {
     break_start: "Začiatok (HH:MM)",
     break_end: "Koniec (HH:MM)",
     break_active: "PRESTÁVKA PREBIEHA",
-    break_active_desc: "Zadávanie úloh je pozastavené.",
+    break_active_desc: "Čas strávený na úlohách sa nezapočítava do štatistík.",
     break_end_btn: "Ukončiť prestávku",
     break_blocked_msg: "Počas prestávky nie je možné pridávať úlohy.",
 
@@ -158,16 +165,44 @@ export const translations = {
     sect_roles: "9. Manažment Rolí a Oprávnení",
     role_add_btn: "Vytvoriť Rolu",
     role_name_place: "Názov role (napr. AUDITOR)",
-    perm_manage_users: "Správa užívateľov",
-    perm_manage_db: "Správa databázy (Diely/Pracoviská)",
-    perm_manage_bom: "Správa BOM",
-    perm_view_analytics: "Zobraziť Analytiku",
-    perm_view_settings: "Zobraziť Nastavenia",
-    perm_edit_tasks: "Editovať úlohy",
-    perm_delete_tasks: "Mazať úlohy",
-    perm_archive: "Archivovať dáta",
-    perm_manage_breaks: "Správa prestávok",
+    
+    // Granular Permissions
+    perm_group_tabs: "Karty (Záložky)",
+    perm_group_actions: "Akcie v Úlohe",
+    perm_group_mgmt: "Manažment & Správa",
+    
+    perm_tab_entry: "Viditeľnosť: Zadávanie",
+    perm_tab_tasks: "Viditeľnosť: Úlohy",
+    perm_tab_bom: "Viditeľnosť: BOM",
+    perm_tab_analytics: "Viditeľnosť: Analytika",
+    perm_tab_settings: "Viditeľnosť: Nastavenia",
+    perm_tab_missing: "Viditeľnosť: Chýbajúci tovar",
+    perm_tab_permissions: "Viditeľnosť: Oprávnenia",
+    
+    perm_btn_finish: "Akcia: Dokončiť",
+    perm_btn_edit: "Akcia: Upraviť",
+    perm_btn_delete: "Akcia: Vymazať",
+    perm_btn_resolve: "Akcia: Riešiť",
+    perm_btn_missing: "Akcia: Chýba",
+    perm_btn_copy: "Akcia: Kopírovať",
+    perm_btn_note: "Akcia: Poznámka",
+    perm_btn_incorrect: "Akcia: Chybne zadané",
+    perm_view_fullscreen: "Funkcia: Fullscreen",
+    perm_play_sound: "Funkcia: Zvukové notifikácie",
+    perm_push_notification: "Funkcia: Push notifikácie",
+    perm_view_passwords: "Funkcia: Zobraziť heslá",
 
+    perm_manage_users: "Správa: Užívatelia (heslo/rola)",
+    perm_delete_users: "Správa: Vymazať užívateľov",
+    perm_manage_db: "Správa: Databáza (diely/prac.)",
+    perm_manage_bom: "Správa: Databáza (BOM)",
+    perm_archive: "Správa: Archivácia",
+    perm_manage_breaks: "Správa: Prestávky",
+    perm_manage_roles: "Správa: Roly a Oprávnenia",
+
+    sect_adhoc_db: "10. Databáza AD-HOC úloh",
+    new_adhoc_place: "Nová AD-HOC úloha",
+    
     // Analytics
     analytics_title: "Analytika Výroby",
     include_archive: "Zahrnúť dáta z archívu",
@@ -187,7 +222,7 @@ export const translations = {
     f_yesterday: "Včerajší deň",
     f_week: "Aktuálny týždeň",
     f_month: "Aktuálny mesiac",
-    f_custom: "Vlastný výber",
+f_custom: "Vlastný výber",
     records: "záznamov",
 
     kpi_total: "Celkovo úloh",
@@ -202,6 +237,7 @@ export const translations = {
     kpi_urgent: "Urgentné (Vykonané)",
     kpi_missing: "Chýbajúci tovar",
     kpi_incorrect: "Chybne Zadané",
+    kpi_adhoc: "AD-HOC úlohy",
 
     table_title: "Detailná výkonnosť skladníkov",
     th_rank: "#",
@@ -214,7 +250,22 @@ export const translations = {
     no_data: "Zatiaľ žiadne dáta pre vybrané obdobie.",
     
     chart_wp: "Top 5 Pracovísk (Objem)",
-    chart_parts: "Top 5 Dielov (Obrátkovosť)"
+    chart_parts: "Top 5 Dielov (Obrátkovosť)",
+    
+    analysis_missing_title: "Analýza Chýbajúceho Tovaru",
+    top_reasons: "Top Dôvody",
+    top_reporters: "Top Nahlasovatelia",
+    
+    // Missing Tab
+    miss_tab_title: "Prehľad chýbajúceho tovaru",
+    miss_th_created: "Zadanie úlohy",
+    miss_th_part: "Diel",
+    miss_th_wp: "Pracovisko",
+    miss_th_reason: "Dôvod",
+    miss_th_who: "Nahlásil",
+    miss_th_when: "Nahlásené",
+    miss_th_creator: "Zadal",
+    miss_delete_confirm: "Naozaj chcete vymazať tento záznam?",
   },
   en: {
     // Login
@@ -228,22 +279,27 @@ export const translations = {
 
     // Header
     logout: "Logout",
+    fullscreen_on: "Fullscreen",
+    fullscreen_off: "Standard View",
     
     // Tabs
-    tab_entry: "Entry",
+    tab_entry: "Task Entry",
     tab_tasks: "Tasks",
     tab_analytics: "Analytics",
     tab_settings: "Settings",
-    tab_bom: "BOM (Bill of Materials)",
+    tab_bom: "BOM",
+    tab_missing: "Missing Items",
+    tab_permissions: "Permissions",
 
     // Entry Screen
-    search_title: "Part Search",
+    search_title: "Task Entry",
     search_subtitle: "Enter required details.",
     priority_label: "Priority",
     prio_low: "Low",
     prio_normal: "Normal",
     prio_urgent: "URGENT",
-    part_number: "Part Number",
+    prio_adhoc: "AD-HOC",
+    part_number: "Part Number / Task Text",
     part_placeholder: "Enter or select part number...",
     workplace: "Workplace",
     workplace_placeholder: "Enter or select workplace...",
@@ -252,10 +308,6 @@ export const translations = {
     unit_boxes: "Boxes",
     unit_pallet: "Pallet",
     pcs_placeholder: "Enter quantity...",
-    boxes_placeholder: "Enter box count...",
-    pallet_placeholder: "Enter pallet count...",
-    result_label: "Result Record:",
-    result_empty: "Fill all fields to see the record.",
     send_btn: "Send to Tasks",
     send_urgent_btn: "SEND URGENT",
     sent_msg: "Sent!",
@@ -292,6 +344,9 @@ export const translations = {
     btn_mark_incorrect: "Mark as Incorrect",
     modal_missing_title: "Select Missing Reason",
     modal_no_reasons: "No reasons defined.",
+    alert_missing_title: "⚠️ ALERT: Missing Item",
+    alert_missing_desc: "was reported as missing.",
+    alert_btn_ok: "Acknowledge",
 
     // Settings
     settings_title: "System Settings",
@@ -300,8 +355,10 @@ export const translations = {
     req_approve: "Approve",
     req_reject: "Reject",
     no_requests: "No pending requests.",
+    search_db_placeholder: "Search...",
     
-    sect_users: "1. User Management",
+    sect_users_manage: "1a. User Management (Role / Password)",
+    sect_users_delete: "1b. Delete Users",
     user_add_title: "ADD USER",
     user_name: "Name",
     user_pass: "Password",
@@ -328,7 +385,9 @@ export const translations = {
     sect_maint: "5. Data Maintenance",
     maint_desc: "If app is slow, move old completed tasks to archive.",
     maint_info: "Only completed tasks older than 24h will be moved.",
+    maint_info_missing: "Reported missing items older than 72h will be moved.",
     archive_btn: "📦 Archive old tasks (> 24h)",
+    archive_missing_btn: "🗄️ Archive Missing Items (> 72h)",
     archiving: "Archiving...",
     sect_maint_db_link: "Open Database (Firebase)",
     sect_maint_gh_link: "Open Source Code (GitHub)",
@@ -338,7 +397,7 @@ export const translations = {
     break_start: "Start (HH:MM)",
     break_end: "End (HH:MM)",
     break_active: "BREAK IN PROGRESS",
-    break_active_desc: "Task entry is suspended.",
+    break_active_desc: "Task time tracking is paused.",
     break_end_btn: "End Break Now",
     break_blocked_msg: "Cannot add tasks during a break.",
 
@@ -359,16 +418,44 @@ export const translations = {
 
     sect_roles: "9. Role & Permission Management",
     role_add_btn: "Create Role",
-    role_name_place: "Role Name (e.g. AUDITOR)",
-    perm_manage_users: "Manage Users",
-    perm_manage_db: "Manage Database (Parts/WP)",
-    perm_manage_bom: "Manage BOM",
-    perm_view_analytics: "View Analytics",
-    perm_view_settings: "View Settings",
-    perm_edit_tasks: "Edit Tasks",
-    perm_delete_tasks: "Delete Tasks",
-    perm_archive: "Archive Data",
-    perm_manage_breaks: "Manage Breaks",
+    role_name_place: "Role Name",
+    
+    // Granular Permissions
+    perm_group_tabs: "Tabs",
+    perm_group_actions: "Task Actions",
+    perm_group_mgmt: "Management",
+
+    perm_tab_entry: "View: Entry",
+    perm_tab_tasks: "View: Tasks",
+    perm_tab_bom: "View: BOM",
+    perm_tab_analytics: "View: Analytics",
+    perm_tab_settings: "View: Settings",
+    perm_tab_missing: "View: Missing Items",
+    perm_tab_permissions: "View: Permissions",
+    
+    perm_btn_finish: "Action: Finish",
+    perm_btn_edit: "Action: Edit",
+    perm_btn_delete: "Action: Delete",
+    perm_btn_resolve: "Action: Resolve",
+    perm_btn_missing: "Action: Missing",
+    perm_btn_copy: "Action: Copy",
+    perm_btn_note: "Action: Note",
+    perm_btn_incorrect: "Action: Incorrect",
+    perm_view_fullscreen: "Feature: Fullscreen",
+    perm_play_sound: "Feature: Sound Notifications",
+    perm_push_notification: "Feature: Push Notifications",
+    perm_view_passwords: "Feature: View Passwords",
+
+    perm_manage_users: "Manage: Users (pw/role)",
+    perm_delete_users: "Manage: Delete Users",
+    perm_manage_db: "Manage: Database (parts/wp)",
+    perm_manage_bom: "Manage: Database (BOM)",
+    perm_archive: "Manage: Archiving",
+    perm_manage_breaks: "Manage: Breaks",
+    perm_manage_roles: "Manage: Roles & Permissions",
+
+    sect_adhoc_db: "10. AD-HOC Task Database",
+    new_adhoc_place: "New AD-HOC task",
 
     // BOM
     bom_title: "BOM Calculator",
@@ -418,6 +505,7 @@ export const translations = {
     kpi_urgent: "Urgent (Done)",
     kpi_missing: "Missing Items",
     kpi_incorrect: "Incorrect Entries",
+    kpi_adhoc: "AD-HOC Tasks",
 
     table_title: "Worker Performance Details",
     th_rank: "#",
@@ -430,6 +518,21 @@ export const translations = {
     no_data: "No data for selected period.",
     
     chart_wp: "Top 5 Workplaces (Volume)",
-    chart_parts: "Top 5 Parts (Turnover)"
+    chart_parts: "Top 5 Parts (Turnover)",
+    
+    analysis_missing_title: "Missing Items Analysis",
+    top_reasons: "Top Reasons",
+    top_reporters: "Top Reporters",
+    
+    // Missing Tab
+    miss_tab_title: "Missing Items Report",
+    miss_th_created: "Task Creation",
+    miss_th_part: "Part",
+    miss_th_wp: "Workplace",
+    miss_th_reason: "Reason",
+    miss_th_who: "Reported By",
+    miss_th_when: "Reported",
+    miss_th_creator: "Creator",
+    miss_delete_confirm: "Are you sure you want to delete this record?",
   }
 };
