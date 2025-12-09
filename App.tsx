@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import LoginScreen from './components/LoginScreen';
-import PartSearchScreen, { Task, PriorityLevel, InventorySession } from './components/PartSearchScreen';
+import PartSearchScreen, { Task, PriorityLevel, InventorySession, Notification } from './components/PartSearchScreen';
 import { db } from './firebase';
 import { 
   collection, 
@@ -20,7 +21,7 @@ import {
 import { partNumbers as initialParts, workplaces as initialWorkplaces, initialMissingReasons } from './data/mockParts';
 
 export interface UserData {
-  id?: string; // Firebase ID
+  id?: string;
   username: string;
   password: string;
   role: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN';
@@ -29,7 +30,7 @@ export interface UserData {
 export interface DBItem {
   id: string;
   value: string;
-  standardTime?: number; // Standard travel/execution time in minutes
+  standardTime?: number;
 }
 
 export interface PartRequest {
@@ -41,8 +42,8 @@ export interface PartRequest {
 
 export interface BreakSchedule {
     id: string;
-    start: string; // "HH:MM"
-    end: string;   // "HH:MM"
+    start: string;
+    end: string;
 }
 
 export interface SystemBreak {
@@ -69,7 +70,7 @@ export interface BOMRequest {
 export interface Role {
     id: string;
     name: string;
-    isSystem?: boolean; // Prevent deletion of system roles
+    isSystem?: boolean;
 }
 
 export interface Permission {
@@ -84,32 +85,28 @@ const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN'>('USER');
   const [tasks, setTasks] = useState<Task[]>([]);
   
-  // Data from DB
+  // Data
   const [users, setUsers] = useState<UserData[]>([]);
   const [parts, setParts] = useState<DBItem[]>([]);
   const [workplaces, setWorkplaces] = useState<DBItem[]>([]);
   const [missingReasons, setMissingReasons] = useState<DBItem[]>([]);
   const [partRequests, setPartRequests] = useState<PartRequest[]>([]);
-  
-  // Break Management State
   const [breakSchedules, setBreakSchedules] = useState<BreakSchedule[]>([]);
   const [systemBreaks, setSystemBreaks] = useState<SystemBreak[]>([]);
   const [isBreakActive, setIsBreakActive] = useState(false);
-
-  // BOM State
   const [bomItems, setBomItems] = useState<BOMItem[]>([]);
   const [bomRequests, setBomRequests] = useState<BOMRequest[]>([]);
-
-  // Roles & Permissions State
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // PWA Install Prompt State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  
+  // Sound logic
+  const isFirstLoad = useRef(true);
 
-  // --- 1. INITIALIZATION & DATA FETCHING ---
+  // --- INITIALIZATION ---
 
-  // Check LocalStorage for Login
   useEffect(() => {
     const storedUser = localStorage.getItem('app_user');
     const storedRole = localStorage.getItem('app_role');
@@ -120,10 +117,9 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Listen for PWA Install Event
   useEffect(() => {
     const handler = (e: any) => {
-      e.preventDefault(); // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
       setDeferredPrompt(e);
     };
     window.addEventListener('beforeinstallprompt', handler);
@@ -134,250 +130,153 @@ const App: React.FC = () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User response to the install prompt: ${outcome}`);
     setDeferredPrompt(null);
   };
 
-  // Fetch Users
+  const hasPermission = (permName: string) => {
+      if (currentUserRole === 'ADMIN') return true;
+      const r = roles.find(r => r.name === currentUserRole);
+      if (!r) return false;
+      return permissions.some(p => p.roleId === r.id && p.permissionName === permName);
+  };
+
+  // --- DATA FETCHING ---
+
   useEffect(() => {
     const q = query(collection(db, 'users'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    return onSnapshot(q, (snapshot) => {
         const fetchedUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
-        
-        // Seeding if empty
-        if (fetchedUsers.length === 0) {
-            seedDatabase();
-        } else {
-            setUsers(fetchedUsers);
-        }
-    }, (error) => {
-        console.error("Error fetching users:", error);
+        if (fetchedUsers.length === 0) seedDatabase();
+        else setUsers(fetchedUsers);
     });
-    return () => unsubscribe();
   }, []);
 
-  // Fetch Tasks (Real-time)
+  // Tasks & Sound Notification
   useEffect(() => {
     const q = query(collection(db, 'tasks')); 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newTasks = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Task));
+    return onSnapshot(q, (snapshot) => {
+      const newTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
 
+      // Sound Notification Logic
+      if (!isFirstLoad.current) {
+          snapshot.docChanges().forEach((change) => {
+              if (change.type === 'added') {
+                  const task = change.doc.data() as Task;
+                  // Only play if it's new (created now)
+                  if (task.createdAt && (Date.now() - task.createdAt < 10000)) {
+                      if (hasPermission('perm_play_sound')) {
+                          try {
+                              const audio = new Audio('https://codeskulptor-demos.commondatastorage.googleapis.com/pang/pop.mp3');
+                              audio.play().catch(e => console.log('Sound blocked', e));
+                          } catch (e) {}
+                      }
+                  }
+              }
+          });
+      }
+      isFirstLoad.current = false;
+
+      // Sort Logic
       const priorityOrder: Record<string, number> = { 'URGENT': 0, 'NORMAL': 1, 'LOW': 2 };
-
       const sortedTasks = newTasks.sort((a, b) => {
         // 1. Status: Active first
-        if (a.isDone !== b.isDone) {
-            return a.isDone ? 1 : -1;
+        if (a.isDone !== b.isDone) return a.isDone ? 1 : -1;
+        
+        // 2. If DONE: Missing -> Urgent -> Normal -> Low
+        if (a.isDone && b.isDone) {
+            if (a.isMissing !== b.isMissing) return a.isMissing ? -1 : 1;
+            const pA = priorityOrder[a.priority || 'NORMAL'];
+            const pB = priorityOrder[b.priority || 'NORMAL'];
+            if (pA !== pB) return pA - pB;
         }
-        // 2. Priority
-        const pA = priorityOrder[a.priority || 'NORMAL'];
-        const pB = priorityOrder[b.priority || 'NORMAL'];
-        if (pA !== pB) {
-            return pA - pB;
+
+        // 3. Priority (Active)
+        if (!a.isDone) {
+            const pA = priorityOrder[a.priority || 'NORMAL'];
+            const pB = priorityOrder[b.priority || 'NORMAL'];
+            if (pA !== pB) return pA - pB;
         }
-        // 3. Time
-        const timeA = a.createdAt || 0;
-        const timeB = b.createdAt || 0;
-        return timeA - timeB; 
+
+        // 4. Time
+        return (a.createdAt || 0) - (b.createdAt || 0); 
       });
 
       setTasks(sortedTasks);
-    }, (error) => {
-        console.error("Error fetching tasks.", error);
     });
-    return () => unsubscribe();
-  }, []);
+  }, [roles, permissions, currentUserRole]); // Re-run if perms change for sound check
 
-  // Fetch Parts
-  useEffect(() => {
-    const q = query(collection(db, 'parts'), orderBy('value'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        setParts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DBItem)));
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Fetch Workplaces
-  useEffect(() => {
-    const q = query(collection(db, 'workplaces'), orderBy('value'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        setWorkplaces(snapshot.docs.map(doc => ({ id: doc.id, value: doc.data().value, standardTime: doc.data().standardTime } as DBItem)));
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Fetch Missing Reasons
-  useEffect(() => {
-    const q = query(collection(db, 'missing_reasons'), orderBy('value'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        setMissingReasons(snapshot.docs.map(doc => ({ id: doc.id, value: doc.data().value })));
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Fetch Part Requests
-  useEffect(() => {
-      const q = query(collection(db, 'part_requests'), orderBy('requestedAt', 'desc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          setPartRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PartRequest)));
-      });
-      return () => unsubscribe();
-  }, []);
-
-  // Fetch Break Schedules
-  useEffect(() => {
-      const q = query(collection(db, 'break_schedules'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          setBreakSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BreakSchedule)));
-      });
-      return () => unsubscribe();
-  }, []);
-
-  // Fetch System Breaks (History & Active status)
-  useEffect(() => {
-      const q = query(collection(db, 'system_breaks'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          const breaks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemBreak));
+  // Other Collections
+  useEffect(() => { const q = query(collection(db, 'parts'), orderBy('value')); return onSnapshot(q, s => setParts(s.docs.map(d => ({id:d.id, ...d.data()} as DBItem)))); }, []);
+  useEffect(() => { const q = query(collection(db, 'workplaces'), orderBy('value')); return onSnapshot(q, s => setWorkplaces(s.docs.map(d => ({id:d.id, value:d.data().value, standardTime:d.data().standardTime} as DBItem)))); }, []);
+  useEffect(() => { const q = query(collection(db, 'missing_reasons'), orderBy('value')); return onSnapshot(q, s => setMissingReasons(s.docs.map(d => ({id:d.id, value:d.data().value} as DBItem)))); }, []);
+  useEffect(() => { const q = query(collection(db, 'part_requests')); return onSnapshot(q, s => setPartRequests(s.docs.map(d => ({id:d.id, ...d.data()} as PartRequest)))); }, []);
+  useEffect(() => { const q = query(collection(db, 'break_schedules')); return onSnapshot(q, s => setBreakSchedules(s.docs.map(d => ({id:d.id, ...d.data()} as BreakSchedule)))); }, []);
+  useEffect(() => { 
+      const q = query(collection(db, 'system_breaks')); 
+      return onSnapshot(q, s => {
+          const breaks = s.docs.map(d => ({id:d.id, ...d.data()} as SystemBreak));
           setSystemBreaks(breaks);
-          
-          // Determine if currently active based on DB state
-          const activeBreak = breaks.find(b => b.isActive);
-          setIsBreakActive(!!activeBreak);
-      });
-      return () => unsubscribe();
+          setIsBreakActive(breaks.some(b => b.isActive));
+      }); 
   }, []);
+  useEffect(() => { const q = query(collection(db, 'bom_items')); return onSnapshot(q, s => setBomItems(s.docs.map(d => ({id:d.id, ...d.data()} as BOMItem)))); }, []);
+  useEffect(() => { const q = query(collection(db, 'bom_requests')); return onSnapshot(q, s => setBomRequests(s.docs.map(d => ({id:d.id, ...d.data()} as BOMRequest)))); }, []);
+  useEffect(() => { const q = query(collection(db, 'notifications')); return onSnapshot(q, s => setNotifications(s.docs.map(d => ({id:d.id, ...d.data()} as Notification)))); }, []);
 
-  // Fetch BOM Items
-  useEffect(() => {
-      const q = query(collection(db, 'bom_items'), orderBy('parentPart'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          setBomItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOMItem)));
-      });
-      return () => unsubscribe();
-  }, []);
-
-  // Fetch BOM Requests
-  useEffect(() => {
-      const q = query(collection(db, 'bom_requests'), orderBy('requestedAt', 'desc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          setBomRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOMRequest)));
-      });
-      return () => unsubscribe();
-  }, []);
-
-  // Fetch Roles
+  // Roles & Permissions
   useEffect(() => {
       const q = query(collection(db, 'roles'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      return onSnapshot(q, (snapshot) => {
           const fetchedRoles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Role));
-          if (fetchedRoles.length === 0) {
-              seedRolesAndPermissions();
-          } else {
-              setRoles(fetchedRoles);
-          }
+          if (fetchedRoles.length === 0) seedRolesAndPermissions();
+          else setRoles(fetchedRoles);
       });
-      return () => unsubscribe();
   }, []);
-
-  // Fetch Permissions
   useEffect(() => {
       const q = query(collection(db, 'permissions'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      return onSnapshot(q, (snapshot) => {
           setPermissions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Permission)));
       });
-      return () => unsubscribe();
   }, []);
 
-  // --- BREAK SCHEDULER LOGIC ---
+  // Break Logic
   useEffect(() => {
       if (!breakSchedules.length) return;
-
       const checkTime = () => {
           const now = new Date();
-          // FIX: Manual time formatting to strictly match HH:MM format (avoiding browser locale issues)
           const hours = String(now.getHours()).padStart(2, '0');
           const minutes = String(now.getMinutes()).padStart(2, '0');
           const currentHM = `${hours}:${minutes}`;
           
-          // Check if we should START a break
-          // We check if current time equals start time
-          // Or if current time is INSIDE a break window but no active break exists (recovery mode)
-          const matchingSchedule = breakSchedules.find(s => {
-              return currentHM >= s.start && currentHM < s.end;
-          });
-
+          const matchingSchedule = breakSchedules.find(s => currentHM >= s.start && currentHM < s.end);
           if (matchingSchedule && !isBreakActive) {
-              // Create active break session
-              // Check if we recently created one to avoid duplicates (naive check)
-              const recentlyCreated = systemBreaks.some(sb => 
-                  sb.isActive && Math.abs(sb.start - Date.now()) < 60000
-              );
-              
-              if (!recentlyCreated) {
-                  addDoc(collection(db, 'system_breaks'), {
-                      start: Date.now(),
-                      isActive: true
-                  });
-              }
+              const recentlyCreated = systemBreaks.some(sb => sb.isActive && Math.abs(sb.start - Date.now()) < 60000);
+              if (!recentlyCreated) addDoc(collection(db, 'system_breaks'), { start: Date.now(), isActive: true });
           }
 
-          // Check if we should END a break
-          // Only end if the current time matches the End time of a schedule
           const matchingEnd = breakSchedules.find(s => s.end === currentHM);
-          
-          // Or if we are active, but NO schedule matches current time anymore (safety net)
           const isInsideAnySchedule = breakSchedules.some(s => currentHM >= s.start && currentHM < s.end);
-
           if ((matchingEnd || !isInsideAnySchedule) && isBreakActive) {
-              // Find the active break doc and close it
               const activeBreak = systemBreaks.find(b => b.isActive);
-              if (activeBreak) {
-                  updateDoc(doc(db, 'system_breaks', activeBreak.id), {
-                      end: Date.now(),
-                      isActive: false
-                  });
-              }
+              if (activeBreak) updateDoc(doc(db, 'system_breaks', activeBreak.id), { end: Date.now(), isActive: false });
           }
       };
-
-      const interval = setInterval(checkTime, 10000); // Check every 10 seconds for better responsiveness
+      const interval = setInterval(checkTime, 10000); 
       return () => clearInterval(interval);
   }, [breakSchedules, isBreakActive, systemBreaks]);
-
 
   const seedDatabase = async () => {
       await addDoc(collection(db, 'users'), { username: 'USER', password: '123', role: 'USER' });
       await addDoc(collection(db, 'users'), { username: 'ADMIN', password: '321', role: 'ADMIN' });
-      
-      const partsBatch = writeBatch(db);
-      initialParts.forEach(p => {
-          const ref = doc(collection(db, 'parts'));
-          partsBatch.set(ref, { value: p });
-      });
-      await partsBatch.commit();
-
-      const wpBatch = writeBatch(db);
-      initialWorkplaces.forEach(w => {
-          const ref = doc(collection(db, 'workplaces'));
-          wpBatch.set(ref, { value: w });
-      });
-      await wpBatch.commit();
-
-      const mrBatch = writeBatch(db);
-      initialMissingReasons.forEach(r => {
-          const ref = doc(collection(db, 'missing_reasons'));
-          mrBatch.set(ref, { value: r });
-      });
-      await mrBatch.commit();
+      const b = writeBatch(db);
+      initialParts.forEach(p => b.set(doc(collection(db, 'parts')), { value: p }));
+      initialWorkplaces.forEach(w => b.set(doc(collection(db, 'workplaces')), { value: w }));
+      initialMissingReasons.forEach(r => b.set(doc(collection(db, 'missing_reasons')), { value: r }));
+      await b.commit();
   };
 
   const seedRolesAndPermissions = async () => {
       const batch = writeBatch(db);
-      
-      // Default Roles
       const roleDefs = [
           { name: 'ADMIN', isSystem: true },
           { name: 'USER', isSystem: true },
@@ -385,557 +284,145 @@ const App: React.FC = () => {
           { name: 'LEADER', isSystem: true },
           { name: 'LOGISTICIAN', isSystem: true }
       ];
-
-      // Insert Roles and store IDs
-      const roleMap: Record<string, string> = {}; // Name -> ID
+      const roleMap: Record<string, string> = {};
       for (const r of roleDefs) {
           const ref = doc(collection(db, 'roles'));
           batch.set(ref, r);
           roleMap[r.name] = ref.id;
       }
 
-      // Default Permissions Logic (Mapping)
-      const perms = [
-          'perm_manage_users', 'perm_manage_db', 'perm_manage_bom', 
-          'perm_view_analytics', 'perm_view_settings', 
-          'perm_edit_tasks', 'perm_delete_tasks', 
-          'perm_archive', 'perm_manage_breaks'
+      const allPerms = [
+          'perm_tab_entry', 'perm_tab_tasks', 'perm_tab_bom', 'perm_tab_analytics', 'perm_tab_settings', 'perm_tab_missing',
+          'perm_btn_finish', 'perm_btn_edit', 'perm_btn_delete', 'perm_btn_resolve', 'perm_btn_missing', 'perm_btn_copy', 'perm_btn_note', 'perm_btn_incorrect',
+          'perm_view_fullscreen', 'perm_play_sound', 'perm_view_passwords',
+          'perm_manage_users', 'perm_manage_db', 'perm_manage_bom', 'perm_archive', 'perm_manage_breaks'
       ];
 
-      // Assign perms to roles based on logic
-      const assign = (roleName: string, permList: string[]) => {
-          const roleId = roleMap[roleName];
-          permList.forEach(p => {
-              const ref = doc(collection(db, 'permissions'));
-              batch.set(ref, { roleId, permissionName: p });
-          });
+      const assign = (role: string, list: string[]) => {
+          const rid = roleMap[role];
+          list.forEach(p => batch.set(doc(collection(db, 'permissions')), { roleId: rid, permissionName: p }));
       };
 
-      assign('ADMIN', perms); // All perms
-      assign('SUPERVISOR', perms); // All perms (simplified)
-      assign('LOGISTICIAN', ['perm_manage_db', 'perm_manage_bom', 'perm_view_analytics', 'perm_view_settings', 'perm_edit_tasks']);
-      assign('LEADER', ['perm_edit_tasks']); // Only edit task priority
-      assign('USER', []); // Basic user has no special perms
+      assign('ADMIN', allPerms);
+      assign('SUPERVISOR', allPerms);
+      assign('USER', ['perm_tab_entry', 'perm_tab_tasks', 'perm_tab_bom', 'perm_btn_resolve', 'perm_btn_missing', 'perm_btn_copy', 'perm_btn_note', 'perm_btn_finish', 'perm_play_sound']);
+      assign('LEADER', ['perm_tab_entry', 'perm_tab_tasks', 'perm_tab_bom', 'perm_btn_incorrect', 'perm_btn_edit', 'perm_play_sound']); 
+      assign('LOGISTICIAN', ['perm_tab_tasks', 'perm_tab_analytics', 'perm_tab_settings', 'perm_tab_missing', 'perm_btn_edit', 'perm_btn_note', 'perm_manage_db', 'perm_manage_bom']);
 
       await batch.commit();
   };
 
+  // --- ACTIONS ---
 
-  // --- 2. AUTH ACTIONS ---
+  const handleLogin = (u: string, r: any) => { setIsAuthenticated(true); setCurrentUser(u); setCurrentUserRole(r); localStorage.setItem('app_user', u); localStorage.setItem('app_role', r); };
+  const handleLogout = () => { setIsAuthenticated(false); setCurrentUser(''); setCurrentUserRole('USER'); localStorage.removeItem('app_user'); localStorage.removeItem('app_role'); };
+  const handleAddUser = (u: UserData) => addDoc(collection(db, 'users'), u);
+  const handleUpdatePassword = (u: string, p: string) => { const user = users.find(us => us.username === u); if(user) updateDoc(doc(db,'users', user.id!), {password: p}); };
+  const handleUpdateUserRole = (u: string, r: any) => { const user = users.find(us => us.username === u); if(user) updateDoc(doc(db,'users', user.id!), {role: r}); };
+  const handleDeleteUser = (u: string) => { const user = users.find(us => us.username === u); if(user) deleteDoc(doc(db,'users', user.id!)); };
 
-  const handleLogin = (username: string, role: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN') => {
-    setIsAuthenticated(true);
-    setCurrentUser(username);
-    setCurrentUserRole(role);
-    localStorage.setItem('app_user', username);
-    localStorage.setItem('app_role', role);
-  };
+  const handleAddPart = (v: string) => addDoc(collection(db,'parts'), {value:v});
+  const handleBatchAddParts = (vs: string[]) => { const b=writeBatch(db); vs.forEach(v => b.set(doc(collection(db,'parts')), {value:v})); b.commit(); };
+  const handleDeletePart = (id: string) => deleteDoc(doc(db,'parts',id));
+  const handleDeleteAllParts = async () => { const s=await getDocs(collection(db,'parts')); const b=writeBatch(db); s.forEach(d=>b.delete(d.ref)); b.commit(); };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setCurrentUser('');
-    setCurrentUserRole('USER');
-    localStorage.removeItem('app_user');
-    localStorage.removeItem('app_role');
-  };
+  const handleAddWorkplace = (v: string, t?: number) => addDoc(collection(db,'workplaces'), {value:v, standardTime:t||0});
+  const handleBatchAddWorkplaces = (vs: string[]) => { const b=writeBatch(db); vs.forEach(l=>{const [v,t]=l.split(';'); if(v) b.set(doc(collection(db,'workplaces')), {value:v.trim(), standardTime: parseInt(t)||0})}); b.commit(); };
+  const handleDeleteWorkplace = (id: string) => deleteDoc(doc(db,'workplaces',id));
+  const handleDeleteAllWorkplaces = async () => { const s=await getDocs(collection(db,'workplaces')); const b=writeBatch(db); s.forEach(d=>b.delete(d.ref)); b.commit(); };
 
-  const handleAddUser = async (user: UserData) => {
-      await addDoc(collection(db, 'users'), user);
-  };
+  const handleAddMissingReason = (v: string) => addDoc(collection(db,'missing_reasons'), {value:v});
+  const handleDeleteMissingReason = (id: string) => deleteDoc(doc(db,'missing_reasons',id));
 
-  const handleUpdatePassword = async (username: string, newPass: string) => {
-      const userToUpdate = users.find(u => u.username === username);
-      if (userToUpdate && userToUpdate.id) {
-          await updateDoc(doc(db, 'users', userToUpdate.id), { password: newPass });
-      }
-  };
+  const handleAddBreakSchedule = (s:string, e:string) => addDoc(collection(db,'break_schedules'), {start:s, end:e});
+  const handleDeleteBreakSchedule = (id: string) => deleteDoc(doc(db,'break_schedules',id));
 
-  const handleUpdateUserRole = async (username: string, newRole: 'ADMIN' | 'USER' | 'SUPERVISOR' | 'LEADER' | 'LOGISTICIAN') => {
-      const userToUpdate = users.find(u => u.username === username);
-      if (userToUpdate && userToUpdate.id) {
-          await updateDoc(doc(db, 'users', userToUpdate.id), { role: newRole });
-      }
-  }
+  const handleAddBOMItem = (p:string, c:string, q:number) => addDoc(collection(db,'bom_items'), {parentPart:p, childPart:c, quantity:q});
+  const handleBatchAddBOMItems = (vs: string[]) => { const b=writeBatch(db); vs.forEach(l=>{const p=l.split(';'); if(p.length>=3) b.set(doc(collection(db,'bom_items')), {parentPart:p[0].trim(), childPart:p[1].trim(), quantity:parseFloat(p[2].trim().replace(',','.'))})}); b.commit(); };
+  const handleDeleteBOMItem = (id: string) => deleteDoc(doc(db,'bom_items',id));
+  const handleDeleteAllBOMItems = async () => { const s=await getDocs(collection(db,'bom_items')); const b=writeBatch(db); s.forEach(d=>b.delete(d.ref)); b.commit(); };
+  const handleRequestBOM = async (p: string) => { await addDoc(collection(db,'bom_requests'), {parentPart:p, requestedBy:currentUser, requestedAt:Date.now()}); return true; };
+  const handleApproveBOMRequest = (r: BOMRequest) => deleteDoc(doc(db,'bom_requests',r.id));
+  const handleRejectBOMRequest = (id: string) => deleteDoc(doc(db,'bom_requests',id));
 
-  const handleDeleteUser = async (username: string) => {
-      const userToDelete = users.find(u => u.username === username);
-      if (userToDelete && userToDelete.id) {
-          await deleteDoc(doc(db, 'users', userToDelete.id));
-      }
-  };
+  const handleAddRole = (n:string) => addDoc(collection(db,'roles'), {name:n.toUpperCase(), isSystem:false});
+  const handleDeleteRole = async (id:string) => { await deleteDoc(doc(db,'roles',id)); const s=await getDocs(query(collection(db,'permissions'), where('roleId','==',id))); const b=writeBatch(db); s.forEach(d=>b.delete(d.ref)); b.commit(); };
+  const handleUpdatePermission = async (pid:string, rname:string, has:boolean) => { const r=roles.find(ro=>ro.name===rname); if(!r)return; if(has) addDoc(collection(db,'permissions'), {roleId:r.id, permissionName:pid}); else { const p=permissions.find(perm=>perm.roleId===r.id && perm.permissionName===pid); if(p) deleteDoc(doc(db,'permissions',p.id)); } };
 
+  const handleRequestNewPart = async (p: string) => { await addDoc(collection(db,'part_requests'), {partNumber:p, requestedBy:currentUser, requestedAt:Date.now()}); return true; };
+  const handleApprovePartRequest = (req: PartRequest) => { handleAddPart(req.partNumber); deleteDoc(doc(db,'part_requests',req.id)); };
+  const handleRejectPartRequest = (id: string) => deleteDoc(doc(db,'part_requests',id));
 
-  // --- 3. DB ACTIONS (Parts/Workplaces/Reasons) ---
-
-  const handleAddPart = async (val: string) => {
-      await addDoc(collection(db, 'parts'), { value: val });
-  };
-
-  const handleBatchAddParts = async (vals: string[]) => {
-      const batch = writeBatch(db);
-      vals.forEach(val => {
-          const ref = doc(collection(db, 'parts'));
-          batch.set(ref, { value: val });
-      });
-      await batch.commit();
-  };
-  
-  const handleDeletePart = async (id: string) => {
-      await deleteDoc(doc(db, 'parts', id));
-  };
-
-  const handleDeleteAllParts = async () => {
-      const q = query(collection(db, 'parts'));
-      const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
-      snapshot.docs.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
-  };
-
-  const handleAddWorkplace = async (val: string, time?: number) => {
-      await addDoc(collection(db, 'workplaces'), { value: val, standardTime: time || 0 });
-  };
-
-  const handleBatchAddWorkplaces = async (vals: string[]) => {
-      const batch = writeBatch(db);
-      vals.forEach(line => {
-          const parts = line.split(';');
-          const val = parts[0].trim();
-          let time = 0;
-          if (parts.length > 1) {
-              const parsedTime = parseInt(parts[1].trim(), 10);
-              if (!isNaN(parsedTime)) time = parsedTime;
-          }
-
-          if (val) {
-              const ref = doc(collection(db, 'workplaces'));
-              batch.set(ref, { value: val, standardTime: time });
-          }
-      });
-      await batch.commit();
-  };
-
-  const handleDeleteWorkplace = async (id: string) => {
-      await deleteDoc(doc(db, 'workplaces', id));
-  };
-
-  const handleDeleteAllWorkplaces = async () => {
-      const q = query(collection(db, 'workplaces'));
-      const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
-      snapshot.docs.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
-  };
-
-  const handleAddMissingReason = async (val: string) => {
-      await addDoc(collection(db, 'missing_reasons'), { value: val });
-  };
-
-  const handleDeleteMissingReason = async (id: string) => {
-      await deleteDoc(doc(db, 'missing_reasons', id));
-  };
-
-  // --- Break Schedule Actions ---
-  const handleAddBreakSchedule = async (start: string, end: string) => {
-      await addDoc(collection(db, 'break_schedules'), { start, end });
-  };
-
-  const handleDeleteBreakSchedule = async (id: string) => {
-      await deleteDoc(doc(db, 'break_schedules', id));
-  };
-
-  const handleManualEndBreak = async () => {
-      const activeBreak = systemBreaks.find(b => b.isActive);
-      if (activeBreak) {
-          await updateDoc(doc(db, 'system_breaks', activeBreak.id), {
-              end: Date.now(),
-              isActive: false
-          });
-      }
-  };
-
-  // --- BOM Actions ---
-  const handleAddBOMItem = async (parent: string, child: string, qty: number) => {
-      await addDoc(collection(db, 'bom_items'), { parentPart: parent, childPart: child, quantity: qty });
-  };
-
-  const handleBatchAddBOMItems = async (vals: string[]) => {
-      const batch = writeBatch(db);
-      vals.forEach(line => {
-          const parts = line.split(';');
-          if (parts.length >= 3) {
-              const parent = parts[0].trim();
-              const child = parts[1].trim();
-              // FIX: Replace comma with dot for European formats and use parseFloat
-              const qtyStr = parts[2].trim().replace(',', '.');
-              const qty = parseFloat(qtyStr);
-              if (parent && child && !isNaN(qty)) {
-                  const ref = doc(collection(db, 'bom_items'));
-                  batch.set(ref, { parentPart: parent, childPart: child, quantity: qty });
-              }
-          }
-      });
-      await batch.commit();
-  };
-
-  const handleDeleteBOMItem = async (id: string) => {
-      await deleteDoc(doc(db, 'bom_items', id));
-  };
-
-  const handleDeleteAllBOMItems = async () => {
-      const q = query(collection(db, 'bom_items'));
-      const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
-      snapshot.docs.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
-  };
-
-  const handleRequestBOM = async (parentPart: string): Promise<boolean> => {
-      const exists = bomRequests.some(r => r.parentPart.toUpperCase() === parentPart.toUpperCase());
-      if (exists) return false;
-      
-      await addDoc(collection(db, 'bom_requests'), {
-          parentPart,
-          requestedBy: currentUser,
-          requestedAt: Date.now()
-      });
-      return true;
-  };
-
-  const handleApproveBOMRequest = async (req: BOMRequest) => {
-      await deleteDoc(doc(db, 'bom_requests', req.id));
-  };
-
-  const handleRejectBOMRequest = async (id: string) => {
-      await deleteDoc(doc(db, 'bom_requests', id));
-  };
-
-  // --- Role & Permission Actions ---
-  const handleAddRole = async (name: string) => {
-      await addDoc(collection(db, 'roles'), { name: name.toUpperCase(), isSystem: false });
-  };
-
-  const handleDeleteRole = async (id: string) => {
-      await deleteDoc(doc(db, 'roles', id));
-      // Cleanup permissions for this role
-      const q = query(collection(db, 'permissions'), where('roleId', '==', id));
-      const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
-      snapshot.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-  };
-
-  const handleUpdatePermission = async (permissionId: string, roleName: string, hasPermission: boolean) => {
-      // Find role ID
-      const role = roles.find(r => r.name === roleName);
-      if (!role) return;
-
-      if (hasPermission) {
-          // Add
-          await addDoc(collection(db, 'permissions'), { roleId: role.id, permissionName: permissionId });
-      } else {
-          // Remove - find specific doc
-          const toRemove = permissions.find(p => p.roleId === role.id && p.permissionName === permissionId);
-          if (toRemove) {
-              await deleteDoc(doc(db, 'permissions', toRemove.id));
-          }
-      }
-  };
-
-
-  // --- 4. REQUEST ACTIONS ---
-  
-  const handleRequestNewPart = async (partNumber: string): Promise<boolean> => {
-      const existsInDb = parts.some(p => p.value.toUpperCase() === partNumber.toUpperCase());
-      if (existsInDb) {
-          alert('Tento diel už v databáze existuje.');
-          return false;
-      }
-
-      const alreadyRequested = partRequests.some(r => r.partNumber.toUpperCase() === partNumber.toUpperCase());
-      if (alreadyRequested) {
-          alert('O tento diel už bolo požiadané.');
-          return false;
-      }
-
-      try {
-          await addDoc(collection(db, 'part_requests'), {
-              partNumber: partNumber,
-              requestedBy: currentUser,
-              requestedAt: Date.now()
-          });
-          return true;
-      } catch (error) {
-          console.error("Error adding request:", error);
-          alert("Chyba pri odosielaní žiadosti. Skúste znova.");
-          return false;
-      }
-  };
-
-  const handleApprovePartRequest = async (req: PartRequest) => {
-      await handleAddPart(req.partNumber);
-      await deleteDoc(doc(db, 'part_requests', req.id));
-  };
-
-  const handleRejectPartRequest = async (id: string) => {
-      await deleteDoc(doc(db, 'part_requests', id));
-  };
-
-
-  // --- 5. TASK ACTIONS ---
-
-  const handleAddTask = async (
-      partNumber: string, 
-      workplace: string, 
-      quantity: string, 
-      quantityUnit: string, 
-      priority: PriorityLevel = 'NORMAL'
-    ) => {
-    
-    // STRICT BREAK CHECK LOGIC
-    // 1. Check if DB says break is active
-    let blocked = isBreakActive;
-
-    // 2. Double check local time against schedules (in case DB is lagging)
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const currentHM = `${hours}:${minutes}`;
-
-    const isLocalBreakTime = breakSchedules.some(s => currentHM >= s.start && currentHM < s.end);
-    
-    if (isLocalBreakTime) blocked = true;
-
-    if (blocked && currentUserRole !== 'ADMIN') {
-        alert("Počas prestávky nie je možné pridávať úlohy.");
-        return;
-    }
-
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = String(now.getFullYear()).slice(-2);
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    
-    const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-    
-    let formattedQty = quantity;
-    if (quantityUnit === 'boxes') {
-         const num = parseInt(quantity, 10);
-         if (num === 1) formattedQty = `1 box`;
-         else if (num > 1 && num < 5) formattedQty = `${num} boxy`;
-         else formattedQty = `${num} boxov`;
-    } else if (quantityUnit === 'pallet') {
-         const num = parseInt(quantity, 10);
-         if (num === 1) formattedQty = `Celá paleta`;
-         else if (num > 1 && num < 5) formattedQty = `${num} palety`;
-         else formattedQty = `${num} paliet`;
-    }
-
-    const taskText = `${formattedDate} / ${partNumber} / ${workplace} / Počet: ${formattedQty}`;
-
-    const workplaceObj = workplaces.find(wp => wp.value === workplace);
-    const standardTime = workplaceObj?.standardTime || 0;
-
-    await addDoc(collection(db, 'tasks'), {
-      text: taskText,
-      partNumber,
-      workplace,
-      quantity,
-      quantityUnit,
-      standardTime: standardTime,
-      isDone: false,
-      priority: priority,
-      createdAt: Date.now(),
-      createdBy: currentUser 
-    });
+  const handleAddTask = async (pn: string, wp: string, qty: string, unit: string, prio: PriorityLevel) => {
+    const formattedDate = new Date().toLocaleString('sk-SK');
+    let fQty = qty; if(unit==='boxes') fQty=`${qty} box`; if(unit==='pallet') fQty=`${qty} pal`;
+    const wpObj = workplaces.find(w => w.value === wp);
+    await addDoc(collection(db, 'tasks'), { text: `${formattedDate} / ${pn} / ${wp} / Počet: ${fQty}`, partNumber:pn, workplace:wp, quantity:qty, quantityUnit:unit, standardTime:wpObj?.standardTime||0, isDone:false, priority:prio, createdAt:Date.now(), createdBy:currentUser });
   };
 
   const handleToggleTask = async (id: string) => {
-    const taskToToggle = tasks.find(t => t.id === id);
-    if (taskToToggle) {
-      const newState = !taskToToggle.isDone;
-      
-      const updateData: any = {
-          isDone: newState,
-          status: newState ? 'completed' : null
-      };
-
-      if (newState) {
-          const now = new Date();
-          const timeString = now.toLocaleTimeString('sk-SK');
-          updateData.completionTime = timeString;
-          updateData.completedBy = currentUser;
-          updateData.completedAt = Date.now();
-          updateData.isInProgress = false;
-          updateData.inProgressBy = null;
-          updateData.isBlocked = false; 
-      } else {
-          updateData.completionTime = null;
-          updateData.completedBy = null;
-          updateData.completedAt = null;
-      }
-
-      await updateDoc(doc(db, 'tasks', id), updateData);
+    const t = tasks.find(x => x.id === id);
+    if(t) {
+        const newState = !t.isDone;
+        await updateDoc(doc(db,'tasks',id), { isDone:newState, status:newState?'completed':null, completionTime:newState?new Date().toLocaleTimeString('sk-SK'):null, completedBy:newState?currentUser:null, completedAt:newState?Date.now():null, isInProgress:false, inProgressBy:null, isBlocked:false });
     }
   };
 
-  const handleMarkAsIncorrect = async (id: string) => {
-    const taskToUpdate = tasks.find(t => t.id === id);
-    if (taskToUpdate) {
-        const now = new Date();
-        const timeString = now.toLocaleTimeString('sk-SK');
-        const updateData = {
-            isDone: true,
-            status: 'incorrectly_entered' as const,
-            completionTime: timeString,
-            completedBy: currentUser,
-            completedAt: Date.now(),
-            isInProgress: false,
-            inProgressBy: null,
-            isBlocked: false,
-        };
-        await updateDoc(doc(db, 'tasks', id), updateData);
-    }
-  };
-
-  const handleSetInProgress = async (id: string) => {
-      const task = tasks.find(t => t.id === id);
-      if (task) {
-          const newStatus = !task.isInProgress;
-          const updateData: any = {
-              isInProgress: newStatus,
-              inProgressBy: newStatus ? currentUser : null
-          };
-          
-          if (newStatus && !task.startedAt) {
-              updateData.startedAt = Date.now();
+  const handleMarkAsIncorrect = async (id: string) => updateDoc(doc(db,'tasks',id), { isDone:true, status:'incorrectly_entered', completionTime:new Date().toLocaleTimeString('sk-SK'), completedBy:currentUser, completedAt:Date.now(), isInProgress:false, inProgressBy:null, isBlocked:false });
+  const handleSetInProgress = async (id: string) => { const t = tasks.find(x=>x.id===id); if(t) updateDoc(doc(db,'tasks',id), { isInProgress:!t.isInProgress, inProgressBy:!t.isInProgress?currentUser:null, startedAt:(!t.isInProgress && !t.startedAt)?Date.now():t.startedAt }); };
+  const handleAddNote = (id:string, n:string) => updateDoc(doc(db,'tasks',id), {note:n});
+  const handleReleaseTask = (id:string) => updateDoc(doc(db,'tasks',id), {isInProgress:false, inProgressBy:null});
+  const handleEditTask = (id:string, txt:string, prio?:PriorityLevel) => updateDoc(doc(db,'tasks',id), {text:txt, priority:prio});
+  const handleDeleteTask = (id:string) => deleteDoc(doc(db,'tasks',id));
+  
+  const handleToggleMissing = async (id:string, reason?:string) => { 
+      const t=tasks.find(x=>x.id===id); 
+      if(t) {
+          const isMissing = !t.isMissing;
+          await updateDoc(doc(db,'tasks',id), { 
+              isMissing, 
+              missingReportedBy: isMissing?currentUser:null, 
+              missingReason: isMissing?(reason||'Iné'):null,
+              // AUTO FINISH
+              isDone: isMissing ? true : t.isDone,
+              completedAt: isMissing ? Date.now() : t.completedAt,
+              completedBy: isMissing ? currentUser : t.completedBy
+          });
+          // Alert Notification
+          if (isMissing) {
+              await addDoc(collection(db, 'notifications'), {
+                  partNumber: t.partNumber || 'Unknown',
+                  reason: reason || 'Iné',
+                  reportedBy: currentUser,
+                  timestamp: Date.now()
+              });
           }
-
-          await updateDoc(doc(db, 'tasks', id), updateData);
-      }
+      } 
   };
-
-  const handleAddNote = async (id: string, note: string) => {
-      await updateDoc(doc(db, 'tasks', id), { note });
-  };
-
-  const handleReleaseTask = async (id: string) => {
-      const task = tasks.find(t => t.id === id);
-      if (task && task.isInProgress) {
-          await updateDoc(doc(db, 'tasks', id), {
-              isInProgress: false,
-              inProgressBy: null
-          });
-      }
-  };
-
-  const handleEditTask = async (id: string, newText: string, newPriority?: PriorityLevel) => {
-      const updateData: any = { text: newText };
-      if (newPriority) {
-          updateData.priority = newPriority;
-      }
-      await updateDoc(doc(db, 'tasks', id), updateData);
-  };
-
-  const handleDeleteTask = async (id: string) => {
-    await deleteDoc(doc(db, 'tasks', id));
-  };
-
-  const handleToggleMissing = async (id: string, reason?: string) => {
-      const task = tasks.find(t => t.id === id);
-      if (task) {
-          const newMissingState = !task.isMissing;
-          await updateDoc(doc(db, 'tasks', id), { 
-              isMissing: newMissingState,
-              missingReportedBy: newMissingState ? currentUser : null,
-              missingReason: newMissingState ? (reason || 'Iné') : null
-          });
-      }
-  };
+  
+  const handleClearNotification = (id: string) => deleteDoc(doc(db, 'notifications', id));
 
   const handleToggleBlock = async (id: string) => {
-      const task = tasks.find(t => t.id === id);
-      if (task) {
-          const isBlocked = !task.isBlocked;
-          const inventoryHistory = task.inventoryHistory ? [...task.inventoryHistory] : [];
-          
-          if (isBlocked) {
-              inventoryHistory.push({ start: Date.now() });
-          } else {
-              const lastIndex = inventoryHistory.length - 1;
-              if (lastIndex >= 0 && !inventoryHistory[lastIndex].end) {
-                  inventoryHistory[lastIndex].end = Date.now();
-              }
-          }
-
-          await updateDoc(doc(db, 'tasks', id), {
-              isBlocked,
-              inventoryHistory
-          });
+      const t=tasks.find(x=>x.id===id);
+      if(t) {
+          const isBlocked = !t.isBlocked;
+          const hist = t.inventoryHistory ? [...t.inventoryHistory] : [];
+          if(isBlocked) hist.push({start:Date.now()}); else { const last=hist[hist.length-1]; if(last && !last.end) last.end=Date.now(); }
+          updateDoc(doc(db,'tasks',id), { isBlocked, inventoryHistory:hist });
       }
   };
-
-  // --- 6. ARCHIVE ACTIONS ---
 
   const handleArchiveTasks = async () => {
-      try {
-        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-        const cutoffTime = Date.now() - ONE_DAY_MS;
-
-        const q = query(
-            collection(db, 'tasks'), 
-            where('isDone', '==', true),
-            limit(1000) 
-        );
-        
-        const snapshot = await getDocs(q);
-        
-        const toArchiveDocs = snapshot.docs.filter(doc => {
-            const task = doc.data() as Task;
-            return !task.completedAt || task.completedAt < cutoffTime;
-        });
-
-        if (toArchiveDocs.length === 0) {
-            return { success: true, count: 0, message: "Žiadne úlohy staršie ako 24h na archiváciu." };
-        }
-
-        const batchSize = 450; 
-        const chunks = [];
-        for (let i = 0; i < toArchiveDocs.length; i += batchSize) {
-            chunks.push(toArchiveDocs.slice(i, i + batchSize));
-        }
-
-        let totalMoved = 0;
-
-        for (const chunk of chunks) {
-            const batch = writeBatch(db);
-            chunk.forEach(taskDoc => {
-                const data = taskDoc.data();
-                const newRef = doc(collection(db, 'archived_tasks'));
-                batch.set(newRef, { ...data, archivedAt: Date.now() });
-                batch.delete(taskDoc.ref);
-                totalMoved++;
-            });
-            await batch.commit();
-        }
-
-        return { success: true, count: totalMoved };
-      } catch (error: any) {
-        console.error("Archiving failed:", error);
-        return { success: false, error: error.message };
-      }
+      const q = query(collection(db,'tasks'), where('isDone','==',true), limit(1000));
+      const s = await getDocs(q);
+      const toArchive = s.docs.filter(d => !d.data().completedAt || d.data().completedAt < (Date.now() - 86400000));
+      if(toArchive.length===0) return {success:true, count:0, message:"Žiadne staré úlohy."};
+      const b=writeBatch(db);
+      toArchive.forEach(d => { b.set(doc(collection(db,'archived_tasks')), {...d.data(), archivedAt:Date.now()}); b.delete(d.ref); });
+      await b.commit();
+      return {success:true, count:toArchive.length};
   };
-
-  const fetchArchivedTasks = async (): Promise<Task[]> => {
-      try {
-          const q = query(collection(db, 'archived_tasks'));
-          const snapshot = await getDocs(q);
-          return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
-      } catch (error) {
-          console.error("Error fetching archive:", error);
-          return [];
-      }
-  };
+  const fetchArchivedTasks = async () => (await getDocs(collection(db,'archived_tasks'))).docs.map(d=>({id:d.id, ...d.data()} as Task));
 
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center">
@@ -943,74 +430,22 @@ const App: React.FC = () => {
         <LoginScreen onLoginSuccess={handleLogin} users={users} />
       ) : (
         <PartSearchScreen 
-          currentUser={currentUser}
-          currentUserRole={currentUserRole}
-          onLogout={handleLogout}
-          tasks={tasks}
-          onAddTask={handleAddTask}
-          onToggleTask={handleToggleTask}
-          onEditTask={handleEditTask}
-          onDeleteTask={handleDeleteTask}
-          onToggleMissing={handleToggleMissing}
-          onSetInProgress={handleSetInProgress}
-          onToggleBlock={handleToggleBlock}
-          onMarkAsIncorrect={handleMarkAsIncorrect}
-          onAddNote={handleAddNote}
-          onReleaseTask={handleReleaseTask}
-          // User Management Props
-          users={users}
-          onAddUser={handleAddUser}
-          onUpdatePassword={handleUpdatePassword}
-          onUpdateUserRole={handleUpdateUserRole}
-          onDeleteUser={handleDeleteUser}
-          // DB Management Props
-          parts={parts}
-          workplaces={workplaces}
-          missingReasons={missingReasons}
-          onAddPart={handleAddPart}
-          onBatchAddParts={handleBatchAddParts}
-          onDeletePart={handleDeletePart}
-          onDeleteAllParts={handleDeleteAllParts}
-          onAddWorkplace={handleAddWorkplace}
-          onBatchAddWorkplaces={handleBatchAddWorkplaces}
-          onDeleteWorkplace={handleDeleteWorkplace}
-          onDeleteAllWorkplaces={handleDeleteAllWorkplaces}
-          onAddMissingReason={handleAddMissingReason}
-          onDeleteMissingReason={handleDeleteMissingReason}
-          // Part Requests
-          partRequests={partRequests}
-          onRequestPart={handleRequestNewPart}
-          onApprovePartRequest={handleApprovePartRequest}
-          onRejectPartRequest={handleRejectPartRequest}
-          // Archive
-          onArchiveTasks={handleArchiveTasks}
+          currentUser={currentUser} currentUserRole={currentUserRole} onLogout={handleLogout}
+          tasks={tasks} onAddTask={handleAddTask} onToggleTask={handleToggleTask} onEditTask={handleEditTask} onDeleteTask={handleDeleteTask}
+          onToggleMissing={handleToggleMissing} onSetInProgress={handleSetInProgress} onToggleBlock={handleToggleBlock} onMarkAsIncorrect={handleMarkAsIncorrect} onAddNote={handleAddNote} onReleaseTask={handleReleaseTask}
+          users={users} onAddUser={handleAddUser} onUpdatePassword={handleUpdatePassword} onUpdateUserRole={handleUpdateUserRole} onDeleteUser={handleDeleteUser}
+          parts={parts} workplaces={workplaces} missingReasons={missingReasons}
+          onAddPart={handleAddPart} onBatchAddParts={handleBatchAddParts} onDeletePart={handleDeletePart} onDeleteAllParts={handleDeleteAllParts}
+          onAddWorkplace={handleAddWorkplace} onBatchAddWorkplaces={handleBatchAddWorkplaces} onDeleteWorkplace={handleDeleteWorkplace} onDeleteAllWorkplaces={handleDeleteAllWorkplaces}
+          onAddMissingReason={handleAddMissingReason} onDeleteMissingReason={handleDeleteMissingReason}
+          partRequests={partRequests} onRequestPart={handleRequestNewPart} onApprovePartRequest={handleApprovePartRequest} onRejectPartRequest={handleRejectPartRequest}
+          onArchiveTasks={handleArchiveTasks} 
           onFetchArchivedTasks={fetchArchivedTasks}
-          // Breaks
-          breakSchedules={breakSchedules}
-          systemBreaks={systemBreaks}
-          isBreakActive={isBreakActive}
-          onAddBreakSchedule={handleAddBreakSchedule}
-          onDeleteBreakSchedule={handleDeleteBreakSchedule}
-          onEndBreak={handleManualEndBreak}
-          // BOM Props
-          bomItems={bomItems}
-          bomRequests={bomRequests}
-          onAddBOMItem={handleAddBOMItem}
-          onBatchAddBOMItems={handleBatchAddBOMItems}
-          onDeleteBOMItem={handleDeleteBOMItem}
-          onDeleteAllBOMItems={handleDeleteAllBOMItems}
-          onRequestBOM={handleRequestBOM}
-          onApproveBOMRequest={handleApproveBOMRequest}
-          onRejectBOMRequest={handleRejectBOMRequest}
-          // Role Props
-          roles={roles}
-          permissions={permissions}
-          onAddRole={handleAddRole}
-          onDeleteRole={handleDeleteRole}
-          onUpdatePermission={handleUpdatePermission}
-          // PWA Install
-          installPrompt={deferredPrompt}
-          onInstallApp={handleInstallApp}
+          breakSchedules={breakSchedules} systemBreaks={systemBreaks} isBreakActive={isBreakActive} onAddBreakSchedule={handleAddBreakSchedule} onDeleteBreakSchedule={handleDeleteBreakSchedule}
+          bomItems={bomItems} bomRequests={bomRequests} onAddBOMItem={handleAddBOMItem} onBatchAddBOMItems={handleBatchAddBOMItems} onDeleteBOMItem={handleDeleteBOMItem} onDeleteAllBOMItems={handleDeleteAllBOMItems} onRequestBOM={handleRequestBOM} onApproveBOMRequest={handleApproveBOMRequest} onRejectBOMRequest={handleRejectBOMRequest}
+          roles={roles} permissions={permissions} onAddRole={handleAddRole} onDeleteRole={handleDeleteRole} onUpdatePermission={handleUpdatePermission}
+          notifications={notifications} onClearNotification={handleClearNotification}
+          installPrompt={deferredPrompt} onInstallApp={handleInstallApp}
         />
       )}
     </div>
